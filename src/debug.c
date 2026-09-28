@@ -114,6 +114,11 @@ void debug_settings()
     log_debug("===================== Background =======================\n");
     DEBUG_MODE(SETTING_BACKGROUND_MODE, MODE_SETTING_BACKGROUND, config.background_mode);
     DEBUG_COLOR(SETTING_BACKGROUND_COLOR, config.background_color);
+    if (config.wave_color_auto)
+        log_debug("%-25s %s", SETTING_WAVE_COLOR ":", "Auto");
+    else
+        DEBUG_COLOR(SETTING_WAVE_COLOR, config.wave_color);
+    DEBUG_BOOL(SETTING_WAVE_TIME_OF_DAY, config.wave_time_of_day);
     DEBUG_STR(SETTING_BACKGROUND_IMAGE, config.background_image);
     DEBUG_STR(SETTING_SLIDESHOW_DIRECTORY, config.slideshow_directory);
     DEBUG_INT(SETTING_SLIDESHOW_IMAGE_DURATION, config.slideshow_image_duration / 1000);

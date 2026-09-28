@@ -71,7 +71,8 @@ typedef enum {
     BACKGROUND_COLOR,
     BACKGROUND_IMAGE,
     BACKGROUND_SLIDESHOW,
-    BACKGROUND_TRANSPARENT
+    BACKGROUND_TRANSPARENT,
+    BACKGROUND_WAVE
 } ModeBackground;
 
 typedef enum {
@@ -309,6 +310,9 @@ typedef struct {
     ModeSubmenu submenu_mode; // Column: submenus drop down vertically below their entry (carousel)
     float column_icon_scale; // Size of column icons relative to IconSize
     Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
+    bool wave_color_auto; // Wave background color changes by month
+    SDL_Color wave_color;
+    bool wave_time_of_day; // Wave background brightness follows the time of day
     bool sounds_enabled;
     int sound_volume; // 0 to SDL_MIX_MAXVOLUME
     char *sound_paths[NUM_SOUNDS]; // NULL: use the default sound

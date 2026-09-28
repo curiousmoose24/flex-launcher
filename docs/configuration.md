@@ -132,13 +132,16 @@ The settings in this section control what Flex Launcher will display in the back
 - [Overlay](#overlay)
 - [OverlayColor](#overlaycolor)
 - [OverlayOpacity](#overlayopacity)
+- [WaveColor](#wavecolor)
+- [WaveTimeOfDay](#wavetimeofday)
 
 ##### Mode
-Defines what mode the background will be. Possible values: "Color", "Image", and "Slideshow"
+Defines what mode the background will be. Possible values: "Color", "Image", "Slideshow", "Transparent", and "Wave"
 - Color: The background will be a solid color.
 - Image: The background will be an image.
 - Slideshow: The background will be a series of images displayed in random order, with a fading transition between each image.
 - Transparent: The background will be transparent. This is an advanced feature; users should read the [Transparent Backgrounds](#transparent-backgrounds) section before proceeding.
+- Wave: An animated background similar to the PlayStation 3's XMB: a color gradient with soft, glowing ribbons drifting across the screen. See [WaveColor](#wavecolor) and [WaveTimeOfDay](#wavetimeofday). Requires SDL 2.0.18 or newer; with older versions the background falls back to "Color".
 
 Default: Color
 
@@ -182,6 +185,16 @@ Default: #000000 (Black)
 Defines the opacity of the background overlay. Must be a percent value.
 
 Default: 50%
+
+##### WaveColor
+When `Mode` is set to "Wave", this setting defines the base color of the background, in hex format, e.g. `#2D6FD6`. The value "Auto" changes the color each month, like the PS3.
+
+Default: Auto
+
+##### WaveTimeOfDay
+When `Mode` is set to "Wave", this setting makes the background dimmer at night and brighter during the day. This setting is a boolean "true" or "false".
+
+Default: true
 
 #### Layout
 The settings in this section define the geometric layout of the launcher.

@@ -12,6 +12,8 @@ set(SOURCES
   clock.h
   sound.c
   sound.h
+  wave.c
+  wave.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

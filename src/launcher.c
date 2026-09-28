@@ -13,6 +13,7 @@
 #include <launcher_config.h>
 #include "image.h"
 #include "sound.h"
+#include "wave.h"
 #include "util.h"
 #include "debug.h"
 #include "clock.h"
@@ -143,6 +144,9 @@ Config config = {
     .submenu_mode                     = SUBMENU_MODE_SCREEN,
     .column_icon_scale                = 0.6f,
     .fade_time                        = DEFAULT_FADE_TIME,
+    .wave_color_auto                  = true,
+    .wave_color                       = {0x2D, 0x6F, 0xD6, 0xFF},
+    .wave_time_of_day                 = DEFAULT_WAVE_TIME_OF_DAY,
     .sounds_enabled                   = DEFAULT_SOUNDS_ENABLED,
     .sound_volume                     = SDL_MIX_MAXVOLUME / 2,
     .sound_paths                      = {NULL},
@@ -1172,7 +1176,9 @@ static void draw_screen()
     // Draw background
     SDL_RenderClear(renderer);
     if (!(state.application_launching && config.on_launch == ON_LAUNCH_BLANK) || launch_fading) {
-        if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW)
+        if (config.background_mode == BACKGROUND_WAVE)
+            draw_wave_background(ticks.main);
+        else if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW)
             SDL_RenderCopy(renderer, background_texture, NULL, NULL);
 
         if (config.background_mode == BACKGROUND_SLIDESHOW && state.slideshow_transition)
@@ -1679,6 +1685,11 @@ int main(int argc, char *argv[])
     // Initialize Nanosvg, create window and renderer
     init_svg();
     init_sounds();
+    if (config.background_mode == BACKGROUND_WAVE && !wave_background_supported()) {
+        log_error("The Wave background needs SDL 2.0.18 or newer, using a color background");
+        config.background_mode = BACKGROUND_COLOR;
+        set_draw_color();
+    }
     create_window();
 
     // Initialize timing

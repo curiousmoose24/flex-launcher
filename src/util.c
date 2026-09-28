@@ -25,8 +25,8 @@ extern Hotkey          *hotkeys;
 Menu                   *menu  = NULL;
 Entry                  *entry = NULL;
 
-static const char *mode_settings[][5] = {
-    {"Color", "Image", "Slideshow", "Transparent", NULL}, // Background Mode
+static const char *mode_settings[][6] = {
+    {"Color", "Image", "Slideshow", "Transparent", "Wave", NULL}, // Background Mode
     {"Blank", "None", "Quit", NULL, NULL},                // OnLaunch
     {"Truncated", "Shrink", "None", NULL, NULL},          // OversizeMode
     {"Left", "Right", NULL, NULL, NULL},                  // Clock Alignment
@@ -221,6 +221,14 @@ int config_handler(void *user, const char *section, const char *name, const char
             parse_mode_setting(MODE_SETTING_BACKGROUND, value, (int*) &config.background_mode);
         else if (MATCH(name, SETTING_BACKGROUND_COLOR))
             hex_to_color(value, &config.background_color);
+        else if (MATCH(name, SETTING_WAVE_COLOR)) {
+            if (MATCH(value, "Auto"))
+                config.wave_color_auto = true;
+            else if (hex_to_color(value, &config.wave_color))
+                config.wave_color_auto = false;
+        }
+        else if (MATCH(name, SETTING_WAVE_TIME_OF_DAY))
+            convert_bool(value, &config.wave_time_of_day);
         else if (MATCH(name, SETTING_BACKGROUND_IMAGE)) {
             config.background_image = strdup(value);
             clean_path(config.background_image);
