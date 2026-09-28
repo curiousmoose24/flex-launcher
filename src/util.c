@@ -32,7 +32,8 @@ static const char *mode_settings[][5] = {
     {"Left", "Right", NULL, NULL, NULL},                  // Clock Alignment
     {"24hr", "12hr", "Auto", NULL, NULL},                 // Clock Format
     {"Big", "Little", "Auto", NULL, NULL},                // Date Format
-    {"Paged", "Carousel", NULL, NULL, NULL}               // Scroll Mode
+    {"Paged", "Carousel", NULL, NULL, NULL},              // Scroll Mode
+    {"Screen", "Column", NULL, NULL, NULL}                // Submenu Mode
 };
 
 // A function to handle the arguments from the command line
@@ -150,6 +151,11 @@ int config_handler(void *user, const char *section, const char *name, const char
         }
         else if (MATCH(name, SETTING_ON_LAUNCH))
             parse_mode_setting(MODE_SETTING_ON_LAUNCH, value, (int*) &config.on_launch);
+        else if (MATCH(name, SETTING_FADE_TIME)) {
+            int fade_time = atoi(value);
+            if (fade_time >= 0)
+                config.fade_time = (Uint32) fade_time;
+        }
         else if (MATCH(name, SETTING_WRAP_ENTRIES))
             convert_bool(value, &config.wrap_entries);
         else if (MATCH(name, SETTING_RESET_ON_BACK))
@@ -181,6 +187,10 @@ int config_handler(void *user, const char *section, const char *name, const char
             parse_percent_fraction(value, 1.0f, 3.0f, &config.focus_scale);
         else if (MATCH(name, SETTING_FOCUS_POSITION))
             parse_percent_fraction(value, 0.0f, 1.0f, &config.focus_position);
+        else if (MATCH(name, SETTING_SUBMENU_MODE))
+            parse_mode_setting(MODE_SETTING_SUBMENU, value, (int*) &config.submenu_mode);
+        else if (MATCH(name, SETTING_COLUMN_ICON_SIZE))
+            parse_percent_fraction(value, 0.1f, 2.0f, &config.column_icon_scale);
         else if (MATCH(name, SETTING_UNFOCUSED_OPACITY)) {
             float opacity;
             if (parse_percent_fraction(value, 0.0f, 1.0f, &opacity))

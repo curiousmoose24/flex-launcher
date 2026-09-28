@@ -55,6 +55,7 @@ The settings in this section control the general behavior of the launcher.
 - [VSync](#vsync)
 - [FPSLimit](#fpslimit)
 - [OnLaunch](#onlaunch)
+- [FadeTime](#fadetime)
 - [ResetOnBack](#resetonback)
 - [MouseSelect](#mouseselect)
 - [InhibitOSScreensaver](#inhibitosscreensaver)
@@ -85,8 +86,15 @@ Defines the action that Flex Launcher will take upon the launch of an applicatio
 
 Default: Blank
 
+##### FadeTime
+The duration in milliseconds of a fade to black when an application is launched (with [OnLaunch](#onlaunch) set to "Blank"), and of a fade in from black when the launcher starts and when an application exits. A value of 0 disables fading.
+
+Default: 0
+
 ##### WrapEntries
 Defines whether the highlight will wrap to the other side of the screen after reaching its leftmost or rightmost position. This setting is a boolean "true" or "false".
+
+In `Carousel` [ScrollMode](#scrollmode), "true" makes the row scroll endlessly, and "false" makes it stop at the first and last entries. A wrapping carousel is only used for menus with more entries than [MaxButtons](#maxbuttons); a non-wrapping carousel is used for all menus.
 
 Default: false
 
@@ -184,6 +192,8 @@ The settings in this section define the geometric layout of the launcher.
 - [FocusScale](#focusscale)
 - [FocusPosition](#focusposition)
 - [UnfocusedOpacity](#unfocusedopacity)
+- [SubmenuMode](#submenumode)
+- [ColumnIconSize](#columniconsize)
 - [IconSize](#iconsize)
 - [IconSpacing](#iconspacing)
 - [VCenter](#vcenter)
@@ -219,6 +229,20 @@ Default: 50%
 The opacity of icons that are not selected, in percent. The opacity fades smoothly as entries scroll into and out of focus. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
 
 Default: 100%
+
+##### SubmenuMode
+Defines how submenus are shown. Valid options are:
+- `Screen`: Selecting an entry with a `:submenu` command replaces the menu with the submenu.
+- `Column`: A cross layout similar to the PlayStation 3's XrossMediaBar. The entries of the selected entry's submenu are shown as a vertical column below it. Use up and down (the arrow keys, or the [:up](#up) and [:down](#down) commands) to move within the column, and select to launch the highlighted column entry. The selected column entry is shown just below the menu row, and the entries before it move up above the row. Each column remembers its selection. Entries without a submenu are launched directly.
+
+`Column` only applies when [ScrollMode](#scrollmode) is `Carousel`. A non-wrapping carousel ([WrapEntries](#wrapentries)=false) suits it best, since the menu row usually holds only a few categories.
+
+Default: Screen
+
+##### ColumnIconSize
+The size of the icons in a column, in percent of [IconSize](#iconsize). Only applies when [SubmenuMode](#submenumode) is `Column`.
+
+Default: 60%
 
 ##### IconSize
 The width and height of icons on the screen in pixels. If an icon is not the same resolution, it will be stretched accordingly.
@@ -455,6 +479,12 @@ Move the highlight cursor left.
 
 #### :right
 Move the highlight cursor right.
+
+#### :up
+Move the selection up in a column. Only used when [SubmenuMode](#submenumode) is `Column`.
+
+#### :down
+Move the selection down in a column. Only used when [SubmenuMode](#submenumode) is `Column`.
 
 #### :select
 Press enter on the current selection. This special command is only available as a gamepad or hotkey command, it is forbidden for menu entries.

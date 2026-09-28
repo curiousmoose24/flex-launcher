@@ -46,6 +46,8 @@
 #define SCMD_EXIT ":exit"
 #define SCMD_LEFT ":left"
 #define SCMD_RIGHT ":right"
+#define SCMD_UP ":up"
+#define SCMD_DOWN ":down"
 #define SCMD_HOME ":home"
 #define SCMD_BACK ":back"
 #define SCMD_QUIT ":quit"
@@ -60,7 +62,8 @@ typedef enum {
     MODE_SETTING_ALIGNMENT,
     MODE_SETTING_TIME_FORMAT,
     MODE_SETTING_DATE_FORMAT,
-    MODE_SETTING_SCROLL
+    MODE_SETTING_SCROLL,
+    MODE_SETTING_SUBMENU
 } ModeSettingType;
 
 typedef enum {
@@ -86,6 +89,11 @@ typedef enum {
     SCROLL_MODE_PAGED,
     SCROLL_MODE_CAROUSEL
 } ModeScroll;
+
+typedef enum {
+    SUBMENU_MODE_SCREEN,
+    SUBMENU_MODE_COLUMN
+} ModeSubmenu;
 
 typedef enum {
     ALIGNMENT_LEFT,
@@ -290,6 +298,9 @@ typedef struct {
     float focus_position; // Horizontal center of the focused icon, fraction of screen width (carousel)
     Uint8 unfocused_alpha; // Opacity of icons away from focus (carousel)
     bool titles_focused_only;
+    ModeSubmenu submenu_mode; // Column: submenus drop down vertically below their entry (carousel)
+    float column_icon_scale; // Size of column icons relative to IconSize
+    Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
     bool reset_on_back;
     bool mouse_select;
     bool inhibit_os_screensaver;

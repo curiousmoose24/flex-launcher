@@ -38,12 +38,22 @@ static void carousel_layout(void);
 static void carousel_move(Direction direction);
 static void draw_carousel_buttons(void);
 static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha);
+static bool column_active(void);
+static void update_column(void);
+static float column_offset(void);
+static void column_move(bool down);
+static void draw_column(float category_center, float category_closeness);
+static Entry *selected_entry(void);
+static void move_up(void);
+static void move_down(void);
 static void render_buttons(Menu *menu);
 static void move_left(void);
 static void move_right(void);
 static void load_submenu(const char *submenu);
 static void load_back_menu(Menu *menu);
 static void draw_screen(void);
+static void start_fade_in(void);
+static void draw_black_overlay(Uint8 alpha);
 static void handle_keypress(SDL_Keysym *key);
 static void execute_command(const char *command);
 static void poll_gamepad(void);
@@ -129,6 +139,9 @@ Config config = {
     .focus_position                   = 0.5f,
     .unfocused_alpha                  = 0xFF,
     .titles_focused_only              = DEFAULT_TITLE_FOCUSED_ONLY,
+    .submenu_mode                     = SUBMENU_MODE_SCREEN,
+    .column_icon_scale                = 0.6f,
+    .fade_time                        = DEFAULT_FADE_TIME,
     .reset_on_back                    = DEFAULT_RESET_ON_BACK,
     .mouse_select                     = DEFAULT_MOUSE_SELECT,
     .inhibit_os_screensaver           = DEFAULT_INHIBIT_OS_SCREENSAVER,
@@ -433,17 +446,22 @@ static void handle_keypress(SDL_Keysym *key)
         move_left();
     else if (key->sym == SDLK_RIGHT)
         move_right();
+    else if (key->sym == SDLK_UP)
+        move_up();
+    else if (key->sym == SDLK_DOWN)
+        move_down();
     else if (key->sym == SDLK_RETURN) {
+        Entry *entry = selected_entry();
         log_debug("Selected Entry:\n"
             "Title: %s\n"
             "Icon Path: %s\n"
             "Command: %s", 
-            current_entry->title, 
-            current_entry->icon_path, 
-            current_entry->cmd
+            entry->title, 
+            entry->icon_path, 
+            entry->cmd
         );
         
-        execute_command(current_entry->cmd);
+        execute_command(entry->cmd);
     }
     else if (key->sym == SDLK_BACKSPACE)
         load_back_menu(current_menu);
@@ -587,11 +605,13 @@ static void resume_slideshow()
 static int carousel_offset_start = 0;
 static Uint32 carousel_anim_start = 0;
 
-// Carousel mode only applies to menus with more entries than fit on screen
+// Carousel mode applies to all menus when it doesn't wrap. A wrapping carousel
+// only applies to menus with more entries than fit on screen, so that entries
+// are not repeated on screen.
 static bool carousel_active()
 {
     return config.scroll_mode == SCROLL_MODE_CAROUSEL &&
-           current_menu->num_entries > config.max_buttons;
+           (!config.wrap_entries || current_menu->num_entries > config.max_buttons);
 }
 
 // Get the next entry in the current menu, wrapping around to the first
@@ -640,12 +660,18 @@ static void carousel_layout()
         highlight->rect.x = focus_left - config.highlight_hpadding;
         highlight->rect.y = current_entry->icon_rect.y - config.highlight_vpadding;
     }
+    update_column();
 }
 
 // Scroll the carousel one entry left or right
 static void carousel_move(Direction direction)
 {
     // Continue from the current animation offset so rapid presses stay smooth
+    if (!config.wrap_entries &&
+    ((direction == DIRECTION_RIGHT && current_entry->next == NULL) ||
+    (direction == DIRECTION_LEFT && current_entry->previous == NULL)))
+        return;
+
     int offset = carousel_offset();
     if (direction == DIRECTION_RIGHT) {
         current_entry = next_entry_wrapped(current_entry);
@@ -684,19 +710,28 @@ static void draw_carousel_buttons()
     float half_growth = (config.focus_scale - 1.0f) * (float) config.icon_size / 2.0f;
     int reach = geo.screen_width / geo.x_advance + 2;
 
+    // Start from the leftmost entry that can be on screen
     Entry *entry = current_entry;
-    for (int i = 0; i < reach; i++)
-        entry = previous_entry_wrapped(entry);
+    int k = 0;
+    while (k > -reach) {
+        Entry *previous = config.wrap_entries ? previous_entry_wrapped(entry) : entry->previous;
+        if (previous == NULL)
+            break;
+        entry = previous;
+        k--;
+    }
 
-    for (int k = -reach; k <= reach; k++, entry = next_entry_wrapped(entry)) {
+    float focused_center = focus_center;
+    float focused_closeness = 0.0f;
+    for (; entry != NULL && k <= reach; k++, entry = config.wrap_entries ? next_entry_wrapped(entry) : entry->next) {
         // Distance from the focus position in slots (fractional while scrolling)
         float distance = (float) (k*geo.x_advance + offset) / (float) geo.x_advance;
-        float near = fminf(fabsf(distance), 1.0f);
-        float closeness = 1.0f - near;
+        float clamped_distance = fminf(fabsf(distance), 1.0f);
+        float closeness = 1.0f - clamped_distance;
 
         // Neighbors move outward to make room for the enlarged focused icon
         float center = focus_center + (float) (k*geo.x_advance + offset) +
-                       (distance < 0.0f ? -near : near) * half_growth;
+                       (distance < 0.0f ? -clamped_distance : clamped_distance) * half_growth;
         int size = (int) ((float) config.icon_size * (1.0f + (config.focus_scale - 1.0f) * closeness) + 0.5f);
         SDL_Rect icon_rect = {
             .x = (int) center - size / 2,
@@ -704,6 +739,10 @@ static void draw_carousel_buttons()
             .w = size,
             .h = size
         };
+        if (k == 0) {
+            focused_center = center;
+            focused_closeness = closeness;
+        }
         if (icon_rect.x + icon_rect.w <= 0 || icon_rect.x >= geo.screen_width)
             continue;
 
@@ -719,6 +758,146 @@ static void draw_carousel_buttons()
             render_copy_alpha(entry->title_texture, &text_rect, title_alpha);
         }
     }
+    draw_column(focused_center, focused_closeness);
+}
+
+// Column state: the submenu of the selected entry, shown vertically below it (SubmenuMode=Column)
+static Menu *column_menu = NULL;
+static Entry *column_entry = NULL;
+static float column_offset_start = 0.0f;
+static Uint32 column_anim_start = 0;
+
+static bool column_active()
+{
+    return column_menu != NULL && column_entry != NULL &&
+           config.submenu_mode == SUBMENU_MODE_COLUMN && carousel_active();
+}
+
+// Set the column to the submenu of the selected entry, if it opens one
+static void update_column()
+{
+    column_menu = NULL;
+    column_entry = NULL;
+    column_offset_start = 0.0f;
+    if (config.submenu_mode != SUBMENU_MODE_COLUMN || !carousel_active())
+        return;
+
+    const char *cmd = current_entry->cmd;
+    size_t length = strlen(SCMD_SUBMENU);
+    if (strncmp(cmd, SCMD_SUBMENU, length) != 0 || cmd[length] != ' ')
+        return;
+    Menu *menu = get_menu(cmd + length + 1);
+    if (menu == NULL || menu == current_menu || menu->num_entries == 0)
+        return;
+    if (menu->rendered == false)
+        render_buttons(menu);
+
+    // Each column remembers its selected entry
+    column_menu = menu;
+    column_entry = menu->last_selected_entry != NULL ? menu->last_selected_entry : menu->first_entry;
+}
+
+// Get the current offset of the column scroll animation, in entries (ease-out)
+static float column_offset()
+{
+    if (column_offset_start == 0.0f || config.scroll_time == 0)
+        return 0.0f;
+    Uint32 elapsed = ticks.main - column_anim_start;
+    if (elapsed >= config.scroll_time) {
+        column_offset_start = 0.0f;
+        return 0.0f;
+    }
+    float remaining = 1.0f - (float) elapsed / (float) config.scroll_time;
+    return column_offset_start * remaining * remaining;
+}
+
+// Move the column selection up or down (the column does not wrap)
+static void column_move(bool down)
+{
+    Entry *target = down ? column_entry->next : column_entry->previous;
+    if (target == NULL)
+        return;
+    float offset = column_offset();
+    column_entry = target;
+    column_menu->last_selected_entry = target;
+    column_offset_start = offset + (down ? -1.0f : 1.0f);
+    column_anim_start = ticks.main;
+}
+
+// Draw the column of the focused entry. The selected column entry sits just below
+// the row; entries before it move up above the row, like the XMB.
+static void draw_column(float category_center, float category_closeness)
+{
+    if (!column_active() || category_closeness <= 0.0f)
+        return;
+
+    int item_size = (int) ((float) config.icon_size * config.column_icon_scale + 0.5f);
+    int gap = item_size / 4;
+    int item_advance = item_size + gap;
+    int row_middle = geo.y_margin + config.icon_size / 2;
+    int category_half = (int) ((float) config.icon_size * config.focus_scale) / 2;
+    float below_start = (float) (row_middle + category_half + gap +
+                        (config.titles_enabled ? config.title_padding + geo.font_height : 0));
+    float above_start = (float) (row_middle - category_half - gap - item_size);
+
+    int selected = 0;
+    for (Entry *e = column_menu->first_entry; e != column_entry; e = e->next)
+        selected++;
+    float position = (float) selected + column_offset();
+
+    int i = 0;
+    for (Entry *entry = column_menu->first_entry; entry != NULL; entry = entry->next, i++) {
+        // Position relative to the selection (fractional while scrolling)
+        float f = (float) i - position;
+        float y;
+        if (f >= 0.0f)
+            y = below_start + f * (float) item_advance;
+        else if (f <= -1.0f)
+            y = above_start + (f + 1.0f) * (float) item_advance;
+        else
+            y = below_start - f * (above_start - below_start);
+        if (y + (float) item_size < 0.0f || y > (float) geo.screen_height)
+            continue;
+
+        float closeness = 1.0f - fminf(fabsf(f), 1.0f);
+        int size = (int) ((float) item_size * (1.0f + (config.focus_scale - 1.0f) * 0.5f * closeness) + 0.5f);
+        SDL_Rect icon_rect = {
+            .x = (int) category_center - size / 2,
+            .y = (int) y + (item_size - size) / 2,
+            .w = size,
+            .h = size
+        };
+        Uint8 alpha = (Uint8) (((float) config.unfocused_alpha + (float) (0xFF - config.unfocused_alpha) * closeness) *
+                               category_closeness + 0.5f);
+        render_copy_alpha(entry->icon, &icon_rect, alpha);
+
+        // Column titles are shown to the right of the icons
+        if (config.titles_enabled) {
+            SDL_Rect text_rect = entry->text_rect;
+            text_rect.x = icon_rect.x + size + gap;
+            text_rect.y = icon_rect.y + (size - text_rect.h) / 2;
+            render_copy_alpha(entry->title_texture, &text_rect, alpha);
+        }
+    }
+}
+
+// Get the entry that should be executed on select
+static Entry *selected_entry()
+{
+    return column_active() ? column_entry : current_entry;
+}
+
+// Move the selection up or down (only used by the column)
+static void move_up()
+{
+    if (column_active())
+        column_move(false);
+}
+
+static void move_down()
+{
+    if (column_active())
+        column_move(true);
 }
 
 // A function to load a menu
@@ -731,6 +910,7 @@ static int load_menu(Menu *menu, bool set_back_menu, bool reset_position)
     Menu *previous_menu = current_menu;
 
     current_menu = menu;
+    column_menu = NULL;
     log_debug("Loading menu '%s'", current_menu->name);
 
     // Return error if the menu doesn't contain entires
@@ -926,12 +1106,44 @@ static void load_back_menu(Menu *menu)
     load_menu(menu->back, false, config.reset_on_back);
 }
 
+// Fade-in state (after returning from an application, and at startup)
+static bool fade_in_active = false;
+static Uint32 fade_in_start = 0;
+
+// A function to start fading the screen in from black
+static void start_fade_in()
+{
+    if (config.fade_time > 0) {
+        fade_in_active = true;
+        fade_in_start = ticks.main;
+    }
+}
+
+// A function to draw a black overlay over the whole screen
+static void draw_black_overlay(Uint8 alpha)
+{
+    Uint8 r, g, b, a;
+    SDL_BlendMode mode;
+    SDL_GetRenderDrawColor(renderer, &r, &g, &b, &a);
+    SDL_GetRenderDrawBlendMode(renderer, &mode);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, alpha);
+    SDL_RenderFillRect(renderer, NULL);
+    SDL_SetRenderDrawBlendMode(renderer, mode);
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+}
+
 // A function to update the screen with all visible textures
 static void draw_screen()
 {
+    // When launching an application with OnLaunch=Blank, fade to black instead of blanking at once
+    Uint32 launch_elapsed = ticks.main - ticks.application_launched;
+    bool launch_fading = state.application_launching && config.on_launch == ON_LAUNCH_BLANK &&
+                         config.fade_time > 0 && launch_elapsed < config.fade_time;
+
     // Draw background
     SDL_RenderClear(renderer);
-    if (!(state.application_launching && config.on_launch == ON_LAUNCH_BLANK)) {
+    if (!(state.application_launching && config.on_launch == ON_LAUNCH_BLANK) || launch_fading) {
         if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW)
             SDL_RenderCopy(renderer, background_texture, NULL, NULL);
 
@@ -981,6 +1193,17 @@ static void draw_screen()
         // Draw screensaver
         if (state.screensaver_active)
             SDL_RenderCopy(renderer, screensaver->texture, NULL, NULL);
+
+        // Fade out when launching, fade in after returning
+        if (launch_fading)
+            draw_black_overlay((Uint8) (255 * launch_elapsed / config.fade_time));
+        else if (fade_in_active) {
+            Uint32 elapsed = ticks.main - fade_in_start;
+            if (elapsed >= config.fade_time)
+                fade_in_active = false;
+            else
+                draw_black_overlay((Uint8) (255 - 255 * elapsed / config.fade_time));
+        }
     }
     else
         SDL_RenderFillRect(renderer, NULL);
@@ -1018,8 +1241,12 @@ static void execute_command(const char *command)
             move_left();
         else if (!strcmp(special_command, SCMD_RIGHT))
             move_right();
+        else if (!strcmp(special_command, SCMD_UP))
+            move_up();
+        else if (!strcmp(special_command, SCMD_DOWN))
+            move_down();
         else if (!strcmp(special_command, SCMD_SELECT))
-            execute_command(current_entry->cmd);
+            execute_command(selected_entry()->cmd);
         else if (!strcmp(special_command, SCMD_HOME))
             load_menu(default_menu, false, true);
         else if (!strcmp(special_command, SCMD_BACK))
@@ -1345,6 +1572,7 @@ static inline void post_launch()
         resume_slideshow();
     if (config.on_launch == ON_LAUNCH_BLANK)
         set_draw_color();
+    start_fade_in();
 
 #ifdef _WIN32
     SDL_EventState(SDL_SYSWMEVENT, SDL_DISABLE);
@@ -1422,6 +1650,7 @@ int main(int argc, char *argv[])
     ticks.main = SDL_GetTicks();
     ticks.last_input = ticks.main;
     ticks.program_start = ticks.main;
+    start_fade_in();
 
     // Load gamepad overrides
     if (config.gamepad_enabled && config.gamepad_mappings_file != NULL) {
@@ -1545,7 +1774,7 @@ int main(int argc, char *argv[])
                 case SDL_MOUSEBUTTONDOWN:
                     if (config.mouse_select && event.button.button == SDL_BUTTON_LEFT) {
                         ticks.last_input = ticks.main;
-                        execute_command(current_entry->cmd);
+                        execute_command(selected_entry()->cmd);
                     }
                     break;
 
@@ -1621,6 +1850,7 @@ int main(int argc, char *argv[])
             state.application_launching = false;
             if (config.on_launch == ON_LAUNCH_BLANK)
                 set_draw_color();
+            start_fade_in();
         }
         if (state.application_running)
             SDL_Delay(APPLICATION_WAIT_PERIOD);
