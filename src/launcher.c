@@ -456,12 +456,17 @@ static void handle_keypress(SDL_Keysym *key)
 // A function to quit the slideshow mode in case of error or program exit
 void quit_slideshow()
 {
+    // The slideshow may not be initialized yet if the program exits early (e.g. SDL init failure)
+    if (slideshow == NULL)
+        return;
+
     // Free allocated image paths
     for (int i = 0; i < slideshow->num_images; i++)
         free(slideshow->images[i]);
     free(slideshow->images);
     free(slideshow->order);
     free(slideshow);
+    slideshow = NULL;
 }
 
 // A function to initialize the slideshow background mode
