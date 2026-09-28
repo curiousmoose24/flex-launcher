@@ -337,6 +337,23 @@ int config_handler(void *user, const char *section, const char *name, const char
         }
     }
 
+    else if (MATCH(section, "Sounds")) {
+        if (MATCH(name, SETTING_SOUNDS_ENABLED))
+            convert_bool(value, &config.sounds_enabled);
+        else if (MATCH(name, SETTING_SOUNDS_VOLUME)) {
+            float volume;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &volume))
+                config.sound_volume = (int) (volume * (float) SDL_MIX_MAXVOLUME + 0.5f);
+        }
+        else if (MATCH(name, SETTING_SOUND_MOVE) || MATCH(name, SETTING_SOUND_SELECT) || MATCH(name, SETTING_SOUND_BACK)) {
+            SoundType type = MATCH(name, SETTING_SOUND_MOVE) ? SOUND_MOVE :
+                             MATCH(name, SETTING_SOUND_SELECT) ? SOUND_SELECT : SOUND_BACK;
+            free(config.sound_paths[type]);
+            config.sound_paths[type] = strdup(value);
+            clean_path(config.sound_paths[type]);
+        }
+    }
+
     else if (MATCH(section, "Clock")) {
         if (MATCH(name, SETTING_CLOCK_ENABLED))
             convert_bool(value, &config.clock_enabled);
@@ -527,6 +544,103 @@ static bool parse_mode_setting(ModeSettingType type, const char *value, int *set
 const char *get_mode_setting(int type, int value)
 {
     return mode_settings[type][value];
+}
+
+// A function to set a single setting in the config file, preserving the rest of the file.
+// The setting is added to the section (or the section to the file) if it doesn't exist.
+bool save_config_setting(const char *path, const char *section, const char *name, const char *value)
+{
+    FILE *file = fopen(path, "rb");
+    if (file == NULL)
+        return false;
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    if (size < 0) {
+        fclose(file);
+        return false;
+    }
+    char *contents = calloc((size_t) size + 1, 1);
+    size_t read = fread(contents, 1, (size_t) size, file);
+    fclose(file);
+    contents[read] = '\0';
+
+    char tmp_path[MAX_PATH_CHARS + 1];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", path);
+    FILE *out = fopen(tmp_path, "wb");
+    if (out == NULL) {
+        free(contents);
+        return false;
+    }
+
+    size_t section_length = strlen(section);
+    size_t name_length = strlen(name);
+    bool in_section = false, section_found = false, written = false;
+
+    // Blank lines are held back, so a new setting goes directly after the section's last line
+    char *blank_start = NULL;
+    size_t blank_length = 0;
+
+    char *line = contents;
+    while (*line != '\0') {
+        char *end = strchr(line, '\n');
+        size_t length = end != NULL ? (size_t) (end - line) + 1 : strlen(line);
+        bool blank = strspn(line, " \t\r\n") >= length;
+        if (blank) {
+            if (blank_start == NULL)
+                blank_start = line;
+            blank_length += length;
+            line += length;
+            continue;
+        }
+
+        if (line[0] == '[') {
+            // Leaving the section without finding the setting: add it at the end of the section
+            if (in_section && !written) {
+                fprintf(out, "%s=%s\n", name, value);
+                written = true;
+            }
+            in_section = !strncmp(line + 1, section, section_length) && line[section_length + 1] == ']';
+            section_found |= in_section;
+        }
+        if (blank_start != NULL) {
+            fwrite(blank_start, 1, blank_length, out);
+            blank_start = NULL;
+            blank_length = 0;
+        }
+
+        if (in_section && !written && line[0] != '[' && !strncmp(line, name, name_length)) {
+            const char *p = line + name_length;
+            while (*p == ' ' || *p == '\t')
+                p++;
+            if (*p == '=') {
+                fprintf(out, "%s=%s%s", name, value, (length >= 2 && line[length - 2] == '\r') ? "\r\n" : "\n");
+                written = true;
+                line += length;
+                continue;
+            }
+        }
+        fwrite(line, 1, length, out);
+        line += length;
+    }
+    if (!written && section_found && in_section) {
+        fprintf(out, "%s=%s\n", name, value);
+        written = true;
+    }
+    if (blank_start != NULL)
+        fwrite(blank_start, 1, blank_length, out);
+    if (!written) {
+        if (!section_found)
+            fprintf(out, "\n[%s]\n", section);
+        fprintf(out, "%s=%s\n", name, value);
+    }
+    free(contents);
+    bool ok = fclose(out) == 0;
+    if (ok)
+        ok = rename(tmp_path, path) == 0;
+    else
+        remove(tmp_path);
+    return ok;
 }
 
 // A function to parse a percent string (e.g. "150%") into a fraction within [min, max]

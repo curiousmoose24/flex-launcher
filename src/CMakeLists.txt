@@ -10,6 +10,8 @@ set(SOURCES
   debug.h
   clock.c
   clock.h
+  sound.c
+  sound.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

@@ -164,6 +164,14 @@ void debug_settings()
     DEBUG_COLOR(SETTING_SCROLL_INDICATOR_OUTLINE_COLOR, config.scroll_indicator_outline_color);
     log_debug("");
 
+    log_debug("======================== Sounds ========================\n");
+    DEBUG_BOOL(SETTING_SOUNDS_ENABLED, config.sounds_enabled);
+    log_debug("%-25s %.0f%%", SETTING_SOUNDS_VOLUME ":", (double) config.sound_volume * 100.0 / SDL_MIX_MAXVOLUME);
+    log_debug("%-25s %s", SETTING_SOUND_MOVE ":", config.sound_paths[SOUND_MOVE] ? config.sound_paths[SOUND_MOVE] : "(default)");
+    log_debug("%-25s %s", SETTING_SOUND_SELECT ":", config.sound_paths[SOUND_SELECT] ? config.sound_paths[SOUND_SELECT] : "(default)");
+    log_debug("%-25s %s", SETTING_SOUND_BACK ":", config.sound_paths[SOUND_BACK] ? config.sound_paths[SOUND_BACK] : "(default)");
+    log_debug("");
+
     log_debug("======================== Clock =========================\n");
     DEBUG_BOOL(SETTING_CLOCK_ENABLED, config.clock_enabled);
     DEBUG_BOOL(SETTING_CLOCK_SHOW_DATE, config.clock_show_date);

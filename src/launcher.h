@@ -48,6 +48,7 @@
 #define SCMD_RIGHT ":right"
 #define SCMD_UP ":up"
 #define SCMD_DOWN ":down"
+#define SCMD_TOGGLE_SOUNDS ":togglesounds"
 #define SCMD_HOME ":home"
 #define SCMD_BACK ":back"
 #define SCMD_QUIT ":quit"
@@ -94,6 +95,13 @@ typedef enum {
     SUBMENU_MODE_SCREEN,
     SUBMENU_MODE_COLUMN
 } ModeSubmenu;
+
+typedef enum {
+    SOUND_MOVE,
+    SOUND_SELECT,
+    SOUND_BACK,
+    NUM_SOUNDS
+} SoundType;
 
 typedef enum {
     ALIGNMENT_LEFT,
@@ -301,6 +309,10 @@ typedef struct {
     ModeSubmenu submenu_mode; // Column: submenus drop down vertically below their entry (carousel)
     float column_icon_scale; // Size of column icons relative to IconSize
     Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
+    bool sounds_enabled;
+    int sound_volume; // 0 to SDL_MIX_MAXVOLUME
+    char *sound_paths[NUM_SOUNDS]; // NULL: use the default sound
+    char *config_file_path; // Kept so :togglesounds can save its state
     bool reset_on_back;
     bool mouse_select;
     bool inhibit_os_screensaver;

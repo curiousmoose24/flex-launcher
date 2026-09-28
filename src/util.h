@@ -46,4 +46,5 @@ void read_file(const char *path, char **buffer);
 void sprintf_alloc(char **buffer, const char *format, ...);
 Uint16 get_unicode_code_point(const char *p, int *bytes);
 Menu *get_menu(const char *menu_name);
+bool save_config_setting(const char *path, const char *section, const char *name, const char *value);
 Entry *advance_entries(Entry *entry, int spaces, Direction direction);

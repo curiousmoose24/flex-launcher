@@ -12,6 +12,7 @@
 #include "launcher.h"
 #include <launcher_config.h>
 #include "image.h"
+#include "sound.h"
 #include "util.h"
 #include "debug.h"
 #include "clock.h"
@@ -142,6 +143,10 @@ Config config = {
     .submenu_mode                     = SUBMENU_MODE_SCREEN,
     .column_icon_scale                = 0.6f,
     .fade_time                        = DEFAULT_FADE_TIME,
+    .sounds_enabled                   = DEFAULT_SOUNDS_ENABLED,
+    .sound_volume                     = SDL_MIX_MAXVOLUME / 2,
+    .sound_paths                      = {NULL},
+    .config_file_path                 = NULL,
     .reset_on_back                    = DEFAULT_RESET_ON_BACK,
     .mouse_select                     = DEFAULT_MOUSE_SELECT,
     .inhibit_os_screensaver           = DEFAULT_INHIBIT_OS_SCREENSAVER,
@@ -365,6 +370,7 @@ static void cleanup()
     }
 
     // Quit subsystems
+    quit_sounds();
     SDL_Quit();
     IMG_Quit();
     TTF_Quit();
@@ -386,6 +392,7 @@ static void cleanup()
     free(config.gamepad_mappings_file);
     free(config.startup_cmd);
     free(config.quit_cmd);
+    free(config.config_file_path);
     free(highlight);
     free(scroll);
     free(screensaver);
@@ -461,6 +468,7 @@ static void handle_keypress(SDL_Keysym *key)
             entry->cmd
         );
         
+        play_sound(SOUND_SELECT);
         execute_command(entry->cmd);
     }
     else if (key->sym == SDLK_BACKSPACE)
@@ -822,6 +830,7 @@ static void column_move(bool down)
     column_menu->last_selected_entry = target;
     column_offset_start = offset + (down ? -1.0f : 1.0f);
     column_anim_start = ticks.main;
+    play_sound(SOUND_MOVE);
 }
 
 // Draw the column of the focused entry. The selected column entry sits just below
@@ -1004,7 +1013,7 @@ static void render_buttons(Menu *menu)
 }
 
 // A function to move the selection left when clicked by user
-static void move_left()
+static void move_left_entry()
 {
     if (carousel_active()) {
         carousel_move(DIRECTION_LEFT);
@@ -1051,7 +1060,7 @@ static void move_left()
 }
 
 // A function to move the selection right when clicked by the user
-static void move_right()
+static void move_right_entry()
 {
     if (carousel_active()) {
         carousel_move(DIRECTION_RIGHT);
@@ -1093,6 +1102,23 @@ static void move_right()
     }
 }
 
+// Move the selection left or right, with a sound if it moved
+static void move_left()
+{
+    Entry *previous = current_entry;
+    move_left_entry();
+    if (current_entry != previous)
+        play_sound(SOUND_MOVE);
+}
+
+static void move_right()
+{
+    Entry *previous = current_entry;
+    move_right_entry();
+    if (current_entry != previous)
+        play_sound(SOUND_MOVE);
+}
+
 // A function to load a submenu
 static void load_submenu(const char *submenu)
 {
@@ -1103,6 +1129,8 @@ static void load_submenu(const char *submenu)
 // A function to load the previous menu
 static void load_back_menu(Menu *menu)
 {
+    if (menu->back != NULL)
+        play_sound(SOUND_BACK);
     load_menu(menu->back, false, config.reset_on_back);
 }
 
@@ -1245,8 +1273,12 @@ static void execute_command(const char *command)
             move_up();
         else if (!strcmp(special_command, SCMD_DOWN))
             move_down();
-        else if (!strcmp(special_command, SCMD_SELECT))
+        else if (!strcmp(special_command, SCMD_SELECT)) {
+            play_sound(SOUND_SELECT);
             execute_command(selected_entry()->cmd);
+        }
+        else if (!strcmp(special_command, SCMD_TOGGLE_SOUNDS))
+            toggle_sounds();
         else if (!strcmp(special_command, SCMD_HOME))
             load_menu(default_menu, false, true);
         else if (!strcmp(special_command, SCMD_BACK))
@@ -1547,6 +1579,7 @@ static void update_clock(bool block)
 
 static inline void pre_launch()
 {
+    pause_sounds(true);
     if (gamepads != NULL)
         disconnect_gamepad(-1, true, false);
 
@@ -1573,6 +1606,7 @@ static inline void post_launch()
     if (config.on_launch == ON_LAUNCH_BLANK)
         set_draw_color();
     start_fade_in();
+    pause_sounds(false);
 
 #ifdef _WIN32
     SDL_EventState(SDL_SYSWMEVENT, SDL_DISABLE);
@@ -1623,7 +1657,7 @@ int main(int argc, char *argv[])
 
     // Parse config file for settings and menu entries
     parse_config_file(config_file_path);
-    free(config_file_path);
+    config.config_file_path = config_file_path;
 
     // Get default menu
     if (config.default_menu == NULL)
@@ -1644,6 +1678,7 @@ int main(int argc, char *argv[])
 
     // Initialize Nanosvg, create window and renderer
     init_svg();
+    init_sounds();
     create_window();
 
     // Initialize timing
@@ -1774,6 +1809,7 @@ int main(int argc, char *argv[])
                 case SDL_MOUSEBUTTONDOWN:
                     if (config.mouse_select && event.button.button == SDL_BUTTON_LEFT) {
                         ticks.last_input = ticks.main;
+                        play_sound(SOUND_SELECT);
                         execute_command(selected_entry()->cmd);
                     }
                     break;
