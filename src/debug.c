@@ -125,6 +125,9 @@ void debug_settings()
     DEBUG_INT(SETTING_MAX_BUTTONS, config.max_buttons);
     DEBUG_MODE(SETTING_SCROLL_MODE, MODE_SETTING_SCROLL, config.scroll_mode);
     DEBUG_INT(SETTING_SCROLL_TIME, (int) config.scroll_time);
+    log_debug("%-25s %.0f%%", SETTING_FOCUS_SCALE ":", (double) (config.focus_scale * 100.0f));
+    log_debug("%-25s %.0f%%", SETTING_FOCUS_POSITION ":", (double) (config.focus_position * 100.0f));
+    log_debug("%-25s %.0f%%", SETTING_UNFOCUSED_OPACITY ":", (double) config.unfocused_alpha * 100.0 / 255.0);
     DEBUG_INT(SETTING_ICON_SIZE, config.icon_size);
     DEBUG_INT(SETTING_ICON_SPACING, config.icon_spacing);
     DEBUG_STR(SETTING_VCENTER, config.vcenter[0] != '\0' ? config.vcenter : "50%");
@@ -139,6 +142,7 @@ void debug_settings()
     DEBUG_COLOR(SETTING_TITLE_SHADOW_COLOR, config.title_shadow_color);
     DEBUG_MODE(SETTING_TITLE_OVERSIZE_MODE, MODE_SETTING_OVERSIZE, config.title_oversize_mode);
     DEBUG_INT(SETTING_TITLE_PADDING, config.title_padding);
+    DEBUG_BOOL(SETTING_TITLE_FOCUSED_ONLY, config.titles_focused_only);
     log_debug("");
 
     log_debug("====================== Highlight =======================\n");

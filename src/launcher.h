@@ -286,6 +286,10 @@ typedef struct {
     bool wrap_entries;
     ModeScroll scroll_mode;
     Uint32 scroll_time;
+    float focus_scale; // Size of the focused icon relative to IconSize (carousel)
+    float focus_position; // Horizontal center of the focused icon, fraction of screen width (carousel)
+    Uint8 unfocused_alpha; // Opacity of icons away from focus (carousel)
+    bool titles_focused_only;
     bool reset_on_back;
     bool mouse_select;
     bool inhibit_os_screensaver;

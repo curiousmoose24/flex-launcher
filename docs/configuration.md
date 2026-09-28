@@ -179,6 +179,11 @@ Default: 50%
 The settings in this section define the geometric layout of the launcher.
 
 - [MaxButtons](#maxbuttons)
+- [ScrollMode](#scrollmode)
+- [ScrollTime](#scrolltime)
+- [FocusScale](#focusscale)
+- [FocusPosition](#focusposition)
+- [UnfocusedOpacity](#unfocusedopacity)
 - [IconSize](#iconsize)
 - [IconSpacing](#iconspacing)
 - [VCenter](#vcenter)
@@ -187,6 +192,33 @@ The settings in this section define the geometric layout of the launcher.
 The maximum number of buttons that can be displayed on the screen. If a menu has more entries than this value, it will be split into multiple pages. A value of 3-5 is sensible for a typical TV size and viewing distance.
 
 Default: 4
+
+##### ScrollMode
+Defines how the menu scrolls when it has more entries than [MaxButtons](#maxbuttons). Valid options are:
+- `Paged`: The menu is split into pages of MaxButtons entries.
+- `Carousel`: The highlight stays at a fixed position and the row of entries scrolls one entry at a time with a slide animation, wrapping around endlessly. Entries fill the screen from edge to edge, so the neighboring entries peek in from both sides. Menus with MaxButtons or fewer entries are laid out as in `Paged` mode.
+
+Default: Paged
+
+##### ScrollTime
+The duration of the Carousel slide animation, in milliseconds. A value of 0 disables the animation. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 150
+
+##### FocusScale
+The size of the selected entry's icon, in percent of [IconSize](#iconsize). Values above 100% enlarge the selected icon, and the neighboring icons move outward to make room. The size animates smoothly while scrolling. Valid range is 100%-300%. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 100%
+
+##### FocusPosition
+The horizontal position of the center of the selected entry, in percent of the screen width. A value of 50% keeps the selection in the center of the screen; a value around 33% places it left of center. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 50%
+
+##### UnfocusedOpacity
+The opacity of icons that are not selected, in percent. The opacity fades smoothly as entries scroll into and out of focus. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 100%
 
 ##### IconSize
 The width and height of icons on the screen in pixels. If an icon is not the same resolution, it will be stretched accordingly.
@@ -215,6 +247,7 @@ The settings in this section affect the application titles that display below th
 - [Opacity](#opacity)
 - [OversizeMode](#oversizemode)
 - [Padding](#padding)
+- [FocusedOnly](#focusedonly)
 
 ##### Enabled
 Defines whether or not application titles are enabled. This setting is a boolean "true" or "false".
@@ -263,6 +296,11 @@ Default: Truncate
 Defines the vertical spacing between an icon and its title, in pixels.
 
 Default: 20
+
+##### FocusedOnly
+If set to `true`, only the title of the selected entry is shown. In `Carousel` [ScrollMode](#scrollmode), the title fades in and out as entries scroll into and out of focus.
+
+Default: false
 
 #### Highlight
 The settings in this section control the menu highlight.

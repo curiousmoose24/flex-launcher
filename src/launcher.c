@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <stdbool.h>
 #include <time.h>
@@ -36,6 +37,7 @@ static int carousel_offset(void);
 static void carousel_layout(void);
 static void carousel_move(Direction direction);
 static void draw_carousel_buttons(void);
+static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha);
 static void render_buttons(Menu *menu);
 static void move_left(void);
 static void move_right(void);
@@ -123,6 +125,10 @@ Config config = {
     .wrap_entries                     = DEFAULT_WRAP_ENTRIES,
     .scroll_mode                      = SCROLL_MODE_PAGED,
     .scroll_time                      = DEFAULT_SCROLL_TIME,
+    .focus_scale                      = 1.0f,
+    .focus_position                   = 0.5f,
+    .unfocused_alpha                  = 0xFF,
+    .titles_focused_only              = DEFAULT_TITLE_FOCUSED_ONLY,
     .reset_on_back                    = DEFAULT_RESET_ON_BACK,
     .mouse_select                     = DEFAULT_MOUSE_SELECT,
     .inhibit_os_screensaver           = DEFAULT_INHIBIT_OS_SCREENSAVER,
@@ -616,7 +622,7 @@ static int carousel_offset()
     return (int) ((float) carousel_offset_start * remaining * remaining);
 }
 
-// Lay out the carousel so the selected entry is in the center slot
+// Lay out the carousel so the selected entry is in the focus slot
 static void carousel_layout()
 {
     unsigned int center = (config.max_buttons - 1) / 2;
@@ -627,8 +633,11 @@ static void carousel_layout()
     current_menu->highlight_position = center;
     current_menu->page = 0;
     calculate_button_geometry(root, (int) config.max_buttons);
+
+    // The highlight sits at the focus position, which may be off center
     if (config.highlight) {
-        highlight->rect.x = current_entry->icon_rect.x - config.highlight_hpadding;
+        int focus_left = (int) ((float) geo.screen_width * config.focus_position) - config.icon_size / 2;
+        highlight->rect.x = focus_left - config.highlight_hpadding;
         highlight->rect.y = current_entry->icon_rect.y - config.highlight_vpadding;
     }
 }
@@ -651,35 +660,64 @@ static void carousel_move(Direction direction)
     carousel_anim_start = ticks.main;
 }
 
-// Draw the carousel buttons, filling the screen edge to edge
+// Draw a texture with a temporary opacity
+static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha)
+{
+    if (alpha == 0)
+        return;
+    if (alpha < 0xFF) {
+        SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureAlphaMod(texture, alpha);
+    }
+    SDL_RenderCopy(renderer, texture, NULL, rect);
+    if (alpha < 0xFF)
+        SDL_SetTextureAlphaMod(texture, 0xFF);
+}
+
+// Draw the carousel buttons, filling the screen edge to edge.
+// Size, opacity and title visibility follow each entry's distance from the focus
+// position, so they animate smoothly while the row scrolls.
 static void draw_carousel_buttons()
 {
     int offset = carousel_offset();
+    float focus_center = (float) geo.screen_width * config.focus_position;
+    float half_growth = (config.focus_scale - 1.0f) * (float) config.icon_size / 2.0f;
+    int reach = geo.screen_width / geo.x_advance + 2;
 
-    // Number of extra slots needed on each side to reach the screen edges
-    int extra = (geo.x_margin + abs(offset)) / geo.x_advance + 1;
-    Entry *entry = current_menu->root_entry;
-    for (int i = 0; i < extra; i++)
+    Entry *entry = current_entry;
+    for (int i = 0; i < reach; i++)
         entry = previous_entry_wrapped(entry);
 
-    for (int slot = -extra; slot < geo.num_buttons + extra; slot++) {
+    for (int k = -reach; k <= reach; k++, entry = next_entry_wrapped(entry)) {
+        // Distance from the focus position in slots (fractional while scrolling)
+        float distance = (float) (k*geo.x_advance + offset) / (float) geo.x_advance;
+        float near = fminf(fabsf(distance), 1.0f);
+        float closeness = 1.0f - near;
+
+        // Neighbors move outward to make room for the enlarged focused icon
+        float center = focus_center + (float) (k*geo.x_advance + offset) +
+                       (distance < 0.0f ? -near : near) * half_growth;
+        int size = (int) ((float) config.icon_size * (1.0f + (config.focus_scale - 1.0f) * closeness) + 0.5f);
         SDL_Rect icon_rect = {
-            .x = geo.x_margin + slot*geo.x_advance + offset,
-            .y = geo.y_margin,
-            .w = config.icon_size,
-            .h = config.icon_size
+            .x = (int) center - size / 2,
+            .y = geo.y_margin + (config.icon_size - size) / 2,
+            .w = size,
+            .h = size
         };
-        if (icon_rect.x + icon_rect.w > 0 && icon_rect.x < geo.screen_width) {
-            SDL_Texture *icon = (entry == current_entry && entry->icon_selected != NULL) ? entry->icon_selected : entry->icon;
-            SDL_RenderCopy(renderer, icon, NULL, &icon_rect);
-            if (config.titles_enabled) {
-                SDL_Rect text_rect = entry->text_rect;
-                text_rect.x = icon_rect.x + (icon_rect.w - text_rect.w) / 2;
-                text_rect.y = icon_rect.y + config.icon_size + entry->title_offset + config.title_padding;
-                SDL_RenderCopy(renderer, entry->title_texture, NULL, &text_rect);
-            }
+        if (icon_rect.x + icon_rect.w <= 0 || icon_rect.x >= geo.screen_width)
+            continue;
+
+        Uint8 alpha = (Uint8) ((float) config.unfocused_alpha + (float) (0xFF - config.unfocused_alpha) * closeness + 0.5f);
+        SDL_Texture *icon = (entry == current_entry && entry->icon_selected != NULL) ? entry->icon_selected : entry->icon;
+        render_copy_alpha(icon, &icon_rect, alpha);
+
+        if (config.titles_enabled) {
+            Uint8 title_alpha = config.titles_focused_only ? (Uint8) (255.0f * closeness + 0.5f) : alpha;
+            SDL_Rect text_rect = entry->text_rect;
+            text_rect.x = (int) center - text_rect.w / 2;
+            text_rect.y = icon_rect.y + size + entry->title_offset + config.title_padding;
+            render_copy_alpha(entry->title_texture, &text_rect, title_alpha);
         }
-        entry = next_entry_wrapped(entry);
     }
 }
 
@@ -935,7 +973,7 @@ static void draw_screen()
         for (int i = 0; !carousel_active() && i < geo.num_buttons; i++) {
             icon = (entry->icon_selected != NULL && i == (int) current_menu->highlight_position) ? entry->icon_selected : entry->icon;
             SDL_RenderCopy(renderer, icon, NULL, &entry->icon_rect);
-            if (config.titles_enabled)
+            if (config.titles_enabled && (!config.titles_focused_only || i == (int) current_menu->highlight_position))
                 SDL_RenderCopy(renderer, entry->title_texture, NULL, &entry->text_rect);
             entry = entry-> next;
         }

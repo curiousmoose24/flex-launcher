@@ -16,6 +16,7 @@
 
 static void add_gamepad_control(const char *label, const char *cmd);
 static bool parse_mode_setting(ModeSettingType type, const char *value, int *setting);
+static bool parse_percent_fraction(const char *value, float min, float max, float *result);
 static Menu *create_menu(const char *menu_name, size_t *num_menus);
 
 extern Config          config;
@@ -176,6 +177,15 @@ int config_handler(void *user, const char *section, const char *name, const char
             if (scroll_time >= 0)
                 config.scroll_time = (Uint32) scroll_time;
         }
+        else if (MATCH(name, SETTING_FOCUS_SCALE))
+            parse_percent_fraction(value, 1.0f, 3.0f, &config.focus_scale);
+        else if (MATCH(name, SETTING_FOCUS_POSITION))
+            parse_percent_fraction(value, 0.0f, 1.0f, &config.focus_position);
+        else if (MATCH(name, SETTING_UNFOCUSED_OPACITY)) {
+            float opacity;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &opacity))
+                config.unfocused_alpha = (Uint8) (opacity * 255.0f + 0.5f);
+        }
         else if (MATCH(name, SETTING_ICON_SIZE)) {
             Uint16 icon_size = (Uint16) atoi(value);
             if (icon_size >= MIN_ICON_SIZE && icon_size <= MAX_ICON_SIZE)
@@ -253,6 +263,8 @@ int config_handler(void *user, const char *section, const char *name, const char
             hex_to_color(value, &config.title_shadow_color);
         else if (MATCH(name, SETTING_TITLE_OVERSIZE_MODE))
             parse_mode_setting(MODE_SETTING_OVERSIZE, value, (int*) &config.title_oversize_mode);
+        else if (MATCH(name, SETTING_TITLE_FOCUSED_ONLY))
+            convert_bool(value, &config.titles_focused_only);
         else if (MATCH(name, SETTING_TITLE_PADDING)) {
             int title_padding = atoi(value);
             if (title_padding >= 0)
@@ -505,6 +517,18 @@ static bool parse_mode_setting(ModeSettingType type, const char *value, int *set
 const char *get_mode_setting(int type, int value)
 {
     return mode_settings[type][value];
+}
+
+// A function to parse a percent string (e.g. "150%") into a fraction within [min, max]
+static bool parse_percent_fraction(const char *value, float min, float max, float *result)
+{
+    if (!is_percent(value))
+        return false;
+    float fraction = (float) atof(value) / 100.0f;
+    if (fraction < min || fraction > max)
+        return false;
+    *result = fraction;
+    return true;
 }
 
 // A function to determine if a string is a percent value
