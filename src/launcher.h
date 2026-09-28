@@ -59,7 +59,8 @@ typedef enum {
     MODE_SETTING_OVERSIZE,
     MODE_SETTING_ALIGNMENT,
     MODE_SETTING_TIME_FORMAT,
-    MODE_SETTING_DATE_FORMAT
+    MODE_SETTING_DATE_FORMAT,
+    MODE_SETTING_SCROLL
 } ModeSettingType;
 
 typedef enum {
@@ -80,6 +81,11 @@ typedef enum {
     OVERSIZE_SHRINK,
     OVERSIZE_NONE
 } ModeOversize;
+
+typedef enum {
+    SCROLL_MODE_PAGED,
+    SCROLL_MODE_CAROUSEL
+} ModeScroll;
 
 typedef enum {
     ALIGNMENT_LEFT,
@@ -278,6 +284,8 @@ typedef struct {
     SDL_Color scroll_indicator_outline_color;
     char scroll_indicator_opacity[PERCENT_MAX_CHARS];
     bool wrap_entries;
+    ModeScroll scroll_mode;
+    Uint32 scroll_time;
     bool reset_on_back;
     bool mouse_select;
     bool inhibit_os_screensaver;

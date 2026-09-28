@@ -29,6 +29,13 @@ static void update_clock(bool block);
 static void init_slideshow(void);
 static void init_screensaver(void);
 static void calculate_button_geometry(Entry *entry, int buttons);
+static bool carousel_active(void);
+static Entry *next_entry_wrapped(Entry *entry);
+static Entry *previous_entry_wrapped(Entry *entry);
+static int carousel_offset(void);
+static void carousel_layout(void);
+static void carousel_move(Direction direction);
+static void draw_carousel_buttons(void);
 static void render_buttons(Menu *menu);
 static void move_left(void);
 static void move_right(void);
@@ -114,6 +121,8 @@ Config config = {
     .scroll_indicator_opacity[0]      = '\0',
     .title_oversize_mode              = OVERSIZE_TRUNCATE,
     .wrap_entries                     = DEFAULT_WRAP_ENTRIES,
+    .scroll_mode                      = SCROLL_MODE_PAGED,
+    .scroll_time                      = DEFAULT_SCROLL_TIME,
     .reset_on_back                    = DEFAULT_RESET_ON_BACK,
     .mouse_select                     = DEFAULT_MOUSE_SELECT,
     .inhibit_os_screensaver           = DEFAULT_INHIBIT_OS_SCREENSAVER,
@@ -563,6 +572,112 @@ static void resume_slideshow()
     ticks.slideshow_load = ticks.main;
 }
 
+// Carousel animation state: the row is drawn shifted by an offset that eases to 0
+static int carousel_offset_start = 0;
+static Uint32 carousel_anim_start = 0;
+
+// Carousel mode only applies to menus with more entries than fit on screen
+static bool carousel_active()
+{
+    return config.scroll_mode == SCROLL_MODE_CAROUSEL &&
+           current_menu->num_entries > config.max_buttons;
+}
+
+// Get the next entry in the current menu, wrapping around to the first
+static Entry *next_entry_wrapped(Entry *entry)
+{
+    return entry->next != NULL ? entry->next : current_menu->first_entry;
+}
+
+// Get the previous entry in the current menu, wrapping around to the last
+static Entry *previous_entry_wrapped(Entry *entry)
+{
+    if (entry->previous != NULL)
+        return entry->previous;
+    return advance_entries(current_menu->first_entry, (int) current_menu->num_entries - 1, DIRECTION_RIGHT);
+}
+
+// Get the current horizontal offset of the carousel scroll animation (ease-out)
+static int carousel_offset()
+{
+    if (carousel_offset_start == 0 || config.scroll_time == 0)
+        return 0;
+    Uint32 elapsed = ticks.main - carousel_anim_start;
+    if (elapsed >= config.scroll_time) {
+        carousel_offset_start = 0;
+        return 0;
+    }
+    float remaining = 1.0f - (float) elapsed / (float) config.scroll_time;
+    return (int) ((float) carousel_offset_start * remaining * remaining);
+}
+
+// Lay out the carousel so the selected entry is in the center slot
+static void carousel_layout()
+{
+    unsigned int center = (config.max_buttons - 1) / 2;
+    Entry *root = current_entry;
+    for (unsigned int i = 0; i < center; i++)
+        root = previous_entry_wrapped(root);
+    current_menu->root_entry = root;
+    current_menu->highlight_position = center;
+    current_menu->page = 0;
+    calculate_button_geometry(root, (int) config.max_buttons);
+    if (config.highlight) {
+        highlight->rect.x = current_entry->icon_rect.x - config.highlight_hpadding;
+        highlight->rect.y = current_entry->icon_rect.y - config.highlight_vpadding;
+    }
+}
+
+// Scroll the carousel one entry left or right
+static void carousel_move(Direction direction)
+{
+    // Continue from the current animation offset so rapid presses stay smooth
+    int offset = carousel_offset();
+    if (direction == DIRECTION_RIGHT) {
+        current_entry = next_entry_wrapped(current_entry);
+        offset += geo.x_advance;
+    }
+    else {
+        current_entry = previous_entry_wrapped(current_entry);
+        offset -= geo.x_advance;
+    }
+    carousel_layout();
+    carousel_offset_start = offset;
+    carousel_anim_start = ticks.main;
+}
+
+// Draw the carousel buttons, filling the screen edge to edge
+static void draw_carousel_buttons()
+{
+    int offset = carousel_offset();
+
+    // Number of extra slots needed on each side to reach the screen edges
+    int extra = (geo.x_margin + abs(offset)) / geo.x_advance + 1;
+    Entry *entry = current_menu->root_entry;
+    for (int i = 0; i < extra; i++)
+        entry = previous_entry_wrapped(entry);
+
+    for (int slot = -extra; slot < geo.num_buttons + extra; slot++) {
+        SDL_Rect icon_rect = {
+            .x = geo.x_margin + slot*geo.x_advance + offset,
+            .y = geo.y_margin,
+            .w = config.icon_size,
+            .h = config.icon_size
+        };
+        if (icon_rect.x + icon_rect.w > 0 && icon_rect.x < geo.screen_width) {
+            SDL_Texture *icon = (entry == current_entry && entry->icon_selected != NULL) ? entry->icon_selected : entry->icon;
+            SDL_RenderCopy(renderer, icon, NULL, &icon_rect);
+            if (config.titles_enabled) {
+                SDL_Rect text_rect = entry->text_rect;
+                text_rect.x = icon_rect.x + (icon_rect.w - text_rect.w) / 2;
+                text_rect.y = icon_rect.y + config.icon_size + entry->title_offset + config.title_padding;
+                SDL_RenderCopy(renderer, entry->title_texture, NULL, &text_rect);
+            }
+        }
+        entry = next_entry_wrapped(entry);
+    }
+}
+
 // A function to load a menu
 static int load_menu(Menu *menu, bool set_back_menu, bool reset_position)
 {
@@ -598,6 +713,12 @@ static int load_menu(Menu *menu, bool set_back_menu, bool reset_position)
     }
     else
         current_entry = current_menu->last_selected_entry;
+
+    if (carousel_active()) {
+        carousel_offset_start = 0;
+        carousel_layout();
+        return 0;
+    }
 
     buttons = current_menu->num_entries - (current_menu->page)*config.max_buttons;
     if (buttons > config.max_buttons)
@@ -638,7 +759,7 @@ static void calculate_button_geometry(Entry *entry, int buttons)
                                  (entry->icon_rect.w - entry->text_rect.w) / 2;
             entry->text_rect.y = entry->icon_rect.y + config.icon_size + entry->title_offset + 
                                  config.title_padding;
-            entry = entry->next;
+            entry = next_entry_wrapped(entry);
     }
 }
 
@@ -662,6 +783,11 @@ static void render_buttons(Menu *menu)
 // A function to move the selection left when clicked by user
 static void move_left()
 {
+    if (carousel_active()) {
+        carousel_move(DIRECTION_LEFT);
+        return;
+    }
+
     // If we are not in leftmost position, move highlight left
     if (current_menu->highlight_position > 0) {
         if (config.highlight)
@@ -704,6 +830,11 @@ static void move_left()
 // A function to move the selection right when clicked by the user
 static void move_right()
 {
+    if (carousel_active()) {
+        carousel_move(DIRECTION_RIGHT);
+        return;
+    }
+
     // If we are not in the rightmost position, move highlight right
     if ((int) current_menu->highlight_position < (geo.num_buttons - 1)) {
         if (config.highlight)
@@ -768,12 +899,12 @@ static void draw_screen()
         if (config.background_overlay)
             SDL_RenderCopy(renderer, background_overlay, NULL, NULL);
 
-        // Draw scroll indicators
-        if (config.scroll_indicators &&
+        // Draw scroll indicators (not in carousel mode: the row fills the screen edge to edge)
+        if (config.scroll_indicators && !carousel_active() &&
         (current_menu->page*config.max_buttons + (unsigned int) geo.num_buttons) <= (current_menu->num_entries - 1))
             SDL_RenderCopy(renderer, scroll->texture, NULL, &scroll->rect_right);
 
-        if (config.scroll_indicators && current_menu->page > 0)
+        if (config.scroll_indicators && !carousel_active() && current_menu->page > 0)
             SDL_RenderCopyEx(renderer, scroll->texture, NULL, &scroll->rect_left, 0, NULL, SDL_FLIP_HORIZONTAL);
 
         // Draw clock
@@ -792,9 +923,11 @@ static void draw_screen()
             );
 
         // Draw buttons
+        if (carousel_active())
+            draw_carousel_buttons();
         Entry *entry = current_menu->root_entry;
         SDL_Texture *icon;
-        for (int i = 0; i < geo.num_buttons; i++) {
+        for (int i = 0; !carousel_active() && i < geo.num_buttons; i++) {
             icon = (entry->icon_selected != NULL && i == (int) current_menu->highlight_position) ? entry->icon_selected : entry->icon;
             SDL_RenderCopy(renderer, icon, NULL, &entry->icon_rect);
             if (config.titles_enabled)

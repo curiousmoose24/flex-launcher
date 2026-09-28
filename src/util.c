@@ -30,7 +30,8 @@ static const char *mode_settings[][5] = {
     {"Truncated", "Shrink", "None", NULL, NULL},          // OversizeMode
     {"Left", "Right", NULL, NULL, NULL},                  // Clock Alignment
     {"24hr", "12hr", "Auto", NULL, NULL},                 // Clock Format
-    {"Big", "Little", "Auto", NULL, NULL}                 // Date Format
+    {"Big", "Little", "Auto", NULL, NULL},                // Date Format
+    {"Paged", "Carousel", NULL, NULL, NULL}               // Scroll Mode
 };
 
 // A function to handle the arguments from the command line
@@ -167,6 +168,13 @@ int config_handler(void *user, const char *section, const char *name, const char
             int max_buttons = atoi(value);
             if (max_buttons > 0)
                 config.max_buttons = (unsigned int) max_buttons;
+        }
+        else if (MATCH(name, SETTING_SCROLL_MODE))
+            parse_mode_setting(MODE_SETTING_SCROLL, value, (int*) &config.scroll_mode);
+        else if (MATCH(name, SETTING_SCROLL_TIME)) {
+            int scroll_time = atoi(value);
+            if (scroll_time >= 0)
+                config.scroll_time = (Uint32) scroll_time;
         }
         else if (MATCH(name, SETTING_ICON_SIZE)) {
             Uint16 icon_size = (Uint16) atoi(value);
