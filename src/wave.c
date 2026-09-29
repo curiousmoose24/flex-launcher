@@ -287,7 +287,7 @@ static void spawn_sparkle(Sparkle *sparkle, float seconds)
     // Born near the ribbons, clustered around their center
     sparkle->x = random_float(-0.02f, 1.02f);
     sparkle->y = ribbon_center(&ribbons[0], sparkle->x, sparkle->born, NULL) / (float) geo.screen_height +
-                 random_centered() * 0.18f;
+                 random_centered() * 0.216f; // Up to 21.6% of the screen height above or below
 
     // Drift sideways, twice as often right as left; about a fifth barely move
     float direction = random_float(0.0f, 1.0f) < 0.67f ? 1.0f : -1.0f;
