@@ -17,6 +17,7 @@
 static void add_gamepad_control(const char *label, const char *cmd);
 static bool parse_mode_setting(ModeSettingType type, const char *value, int *setting);
 static bool parse_percent_fraction(const char *value, float min, float max, float *result);
+static bool parse_percent_or_number(const char *value, float min, float max, float *result);
 static Menu *create_menu(const char *menu_name, size_t *num_menus);
 
 extern Config          config;
@@ -231,6 +232,25 @@ int config_handler(void *user, const char *section, const char *name, const char
             else if (hex_to_color(value, &config.wave_color))
                 config.wave_color_mode = WAVE_COLOR_FIXED;
         }
+        else if (MATCH(name, SETTING_IMAGE_REFRESH)) {
+            int minutes = atoi(value);
+            if (minutes >= 0)
+                config.image_refresh = (Uint32) minutes * 60000;
+        }
+        else if (MATCH(name, SETTING_IMAGE_BLUR)) {
+            // Homepage (Tailwind) blur sizes, in CSS pixels
+            static const char *names[] = {"none", "sm", "md", "lg", "xl", "2xl", "3xl"};
+            static const float radii[] = {0.0f, 4.0f, 12.0f, 16.0f, 24.0f, 40.0f, 64.0f};
+            for (size_t i = 0; i < sizeof(radii) / sizeof(radii[0]); i++)
+                if (MATCH(value, names[i]))
+                    config.image_blur = radii[i];
+        }
+        else if (MATCH(name, SETTING_IMAGE_BRIGHTNESS))
+            parse_percent_or_number(value, 0.0f, 2.0f, &config.image_brightness);
+        else if (MATCH(name, SETTING_IMAGE_SATURATION))
+            parse_percent_or_number(value, 0.0f, 2.0f, &config.image_saturation);
+        else if (MATCH(name, SETTING_IMAGE_OPACITY))
+            parse_percent_or_number(value, 0.0f, 1.0f, &config.image_opacity);
         else if (MATCH(name, SETTING_WAVE_TIME_OF_DAY))
             convert_bool(value, &config.wave_time_of_day);
         else if (MATCH(name, SETTING_BACKGROUND_IMAGE)) {
@@ -676,6 +696,19 @@ static bool parse_percent_fraction(const char *value, float min, float max, floa
         return false;
     float fraction = (float) atof(value) / 100.0f;
     if (fraction < min || fraction > max)
+        return false;
+    *result = fraction;
+    return true;
+}
+
+// A function to parse a percent given as "50%" or, like Homepage's settings, as a plain "50"
+static bool parse_percent_or_number(const char *value, float min, float max, float *result)
+{
+    if (is_percent(value))
+        return parse_percent_fraction(value, min, max, result);
+    char *end;
+    float fraction = strtof(value, &end) / 100.0f;
+    if (end == value || fraction < min || fraction > max)
         return false;
     *result = fraction;
     return true;

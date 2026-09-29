@@ -46,6 +46,7 @@ if (UNIX)
   pkg_check_modules(SDL2_IMAGE REQUIRED IMPORTED_TARGET SDL2_image>=${MIN_SDL_IMAGE_VERSION})
   pkg_check_modules(SDL2_TTF REQUIRED IMPORTED_TARGET SDL2_ttf>=${MIN_SDL_TTF_VERSION})
   pkg_check_modules(INIH REQUIRED IMPORTED_TARGET inih)
+  pkg_check_modules(CURL IMPORTED_TARGET libcurl) # Optional: background images from URLs
 endif ()
 
 # Find dependencies - Windows

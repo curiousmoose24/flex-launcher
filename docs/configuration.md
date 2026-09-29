@@ -125,6 +125,11 @@ The settings in this section control what Flex Launcher will display in the back
 - [Mode](#mode)
 - [Color](#color)
 - [Image](#image)
+- [ImageRefresh](#imagerefresh)
+- [ImageBlur](#imageblur)
+- [ImageBrightness](#imagebrightness)
+- [ImageSaturation](#imagesaturation)
+- [ImageOpacity](#imageopacity)
 - [SlideshowDirectory](#slideshowdirectory)
 - [SlideshowImageDuration](#slideshowimageduration)
 - [SlideshowTransitionTime](#slideshowtransitiontime)
@@ -152,6 +157,33 @@ Default: #000000 (Black)
 
 ##### Image
 When `Mode` is set to "Image", this setting defines the image to be displayed in the background. The value should be a path to an image file. If the image is not the same resolution as your desktop, it will be stretched accordingly.
+
+The image can also be a URL (http:// or https://), like the background of the Homepage dashboard, e.g. `https://picsum.photos/{width}/{height}` for a random photo. `{width}` and `{height}` are replaced with the screen size. The image is downloaded in the background and faded in, and the last image is cached (in `~/.cache/flex-launcher/wallpaper`) so it shows immediately at the next startup. Loading images from URLs requires Flex Launcher to be built with libcurl.
+
+##### ImageRefresh
+When [Image](#image) is a URL, download a new image this often, in minutes. The new image fades in over [SlideshowTransitionTime](#slideshowtransitiontime). A value of 0 downloads a new image only at startup.
+
+Default: 0
+
+##### ImageBlur
+Blurs the background image, using the same sizes as the Homepage dashboard: "none", "sm", "md", "lg", "xl", "2xl" or "3xl". Applies to `Image` and `Slideshow` backgrounds.
+
+Default: none
+
+##### ImageBrightness
+The brightness of the background image in percent, e.g. 50% for half as bright. Like the Homepage dashboard, the value can be written without the % sign. Applies to `Image` and `Slideshow` backgrounds.
+
+Default: 100%
+
+##### ImageSaturation
+The color saturation of the background image in percent; 0% is black and white. Applies to `Image` and `Slideshow` backgrounds.
+
+Default: 100%
+
+##### ImageOpacity
+The opacity of the background image in percent, over the background [Color](#color). Applies to `Image` and `Slideshow` backgrounds.
+
+Default: 100%
 
 ##### SlideshowDirectory
 When `Mode` is set to "Slideshow", this setting defines the directory (folder) which contains the images to display in the background. The value should be a path to a directory on your filesystem. The number of images that may be scanned from the directory is limited to 250.

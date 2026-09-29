@@ -14,6 +14,7 @@
 #include "image.h"
 #include "sound.h"
 #include "wave.h"
+#include "webimage.h"
 #include "util.h"
 #include "debug.h"
 #include "clock.h"
@@ -150,6 +151,11 @@ Config config = {
     .column_focus_scale               = 0.0f,
     .fade_time                        = DEFAULT_FADE_TIME,
     .wave_color_mode                  = WAVE_COLOR_MONTH,
+    .image_refresh                    = 0,
+    .image_blur                       = 0.0f,
+    .image_brightness                 = 1.0f,
+    .image_saturation                 = 1.0f,
+    .image_opacity                    = 1.0f,
     .wave_color                       = {0x2D, 0x6F, 0xD6, 0xFF},
     .wave_time_of_day                 = DEFAULT_WAVE_TIME_OF_DAY,
     .sounds_enabled                   = DEFAULT_SOUNDS_ENABLED,
@@ -318,8 +324,8 @@ static void init_sdl_image()
 void set_draw_color()
 {
     SDL_Color *color = NULL;
-    if (config.background_mode == BACKGROUND_COLOR)
-        color = &config.background_color;
+    if (config.background_mode != BACKGROUND_TRANSPARENT)
+        color = &config.background_color; // Also shown behind images until they have loaded
     else if (config.background_mode == BACKGROUND_TRANSPARENT)
         color = &config.chroma_key_color;
 
@@ -365,6 +371,7 @@ static void init_sdl_ttf()
 static void cleanup()
 {
     // Wait until all threads have completed
+    quit_web_background();
     SDL_WaitThread(Slideshowhread, NULL);
     SDL_WaitThread(clock_thread, NULL);
     
@@ -1235,8 +1242,11 @@ static void draw_screen()
     if (!(state.application_launching && config.on_launch == ON_LAUNCH_BLANK) || launch_fading) {
         if (config.background_mode == BACKGROUND_WAVE)
             draw_wave_background(ticks.main);
-        else if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW)
+        else if ((config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW) &&
+        background_texture != NULL)
             SDL_RenderCopy(renderer, background_texture, NULL, NULL);
+        if (config.background_mode == BACKGROUND_IMAGE)
+            draw_web_background_transition();
 
         if (config.background_mode == BACKGROUND_SLIDESHOW && state.slideshow_transition)
             SDL_RenderCopy(renderer, slideshow->transition_texture, NULL, NULL);
@@ -1773,11 +1783,18 @@ int main(int argc, char *argv[])
     if (config.background_mode == BACKGROUND_IMAGE) {
         if (config.background_image == NULL)
             log_error("Background 'Image' setting not specified in config file");
-        else
-            background_texture = load_texture_from_file(config.background_image);
+        else if (is_web_image(config.background_image))
+            init_web_background();
+        else {
+            SDL_Surface *surface = IMG_Load(config.background_image);
+            if (surface == NULL)
+                log_error("Could not load image %s\n%s", config.background_image, IMG_GetError());
+            background_texture = load_texture(apply_background_filters(surface));
+        }
 
-        // Switch to color mode if loading background image failed
-        if (background_texture == NULL) {
+        // Switch to color mode if loading background image failed (a URL image shows the
+        // background color until its first download finishes)
+        if (background_texture == NULL && !is_web_image(config.background_image)) {
             config.background_mode = BACKGROUND_COLOR;
             log_error("Couldn't load background image, defaulting to color background");
             set_draw_color();
@@ -1947,6 +1964,8 @@ int main(int argc, char *argv[])
                 poll_gamepad();
             if (config.background_mode == BACKGROUND_SLIDESHOW)
                 update_slideshow();
+            else if (config.background_mode == BACKGROUND_IMAGE)
+                update_web_background();
             if (config.screensaver_enabled)
                 update_screensaver();
             if (config.clock_enabled)

@@ -20,6 +20,7 @@ extern Config config;
 extern State state;
 extern SDL_Renderer *renderer;
 extern SDL_Texture *background_texture;
+extern Geometry geo;
 NSVGrasterizer *rasterizer = NULL;
 
 // A function to initalize SVG rasterization
@@ -50,7 +51,7 @@ SDL_Surface *load_next_slideshow_background(Slideshow *slideshow, bool transitio
         (slideshow->i)++;
         if (slideshow->i >= slideshow->num_images)
             slideshow->i = 0;
-        surface = IMG_Load(slideshow->images[slideshow->order[slideshow->i]]);
+        surface = apply_background_filters(IMG_Load(slideshow->images[slideshow->order[slideshow->i]]));
         
         // If the loaded image has no alpha channel (e.g. JPEG), create one 
         // so that we can have transparency for the background transition
@@ -382,7 +383,8 @@ SDL_Texture *render_text_texture(const char *text, TextInfo *info, SDL_Rect *rec
     return load_texture(surface);
 }
 
-// A function for one horizontal or vertical box blur pass over a float buffer
+// A function for one horizontal or vertical box blur pass over a float buffer.
+// Pixels beyond the edges repeat the edge pixel, so blurred edges don't darken.
 static void box_blur(const float *in, float *out, int w, int h, int radius, bool horizontal)
 {
     int lines = horizontal ? h : w;
@@ -394,15 +396,12 @@ static void box_blur(const float *in, float *out, int w, int h, int radius, bool
         float *dst = out + (horizontal ? line * w : line);
         float sum = 0.0f;
         for (int i = -radius; i <= radius; i++)
-            if (i >= 0 && i < length)
-                sum += src[i * step];
+            sum += src[(i < 0 ? 0 : (i >= length ? length - 1 : i)) * step];
         for (int i = 0; i < length; i++) {
             dst[i * step] = sum * scale;
             int remove = i - radius, add = i + radius + 1;
-            if (remove >= 0)
-                sum -= src[remove * step];
-            if (add < length)
-                sum += src[add * step];
+            sum -= src[(remove < 0 ? 0 : remove) * step];
+            sum += src[(add >= length ? length - 1 : add) * step];
         }
     }
 }
@@ -455,6 +454,95 @@ SDL_Texture *render_glow_texture(SDL_Surface *text, SDL_Color color, int *paddin
     free(tmp);
     *padding = pad;
     return load_texture(glow);
+}
+
+// A function to apply the background image filters (ImageBlur, ImageBrightness, ImageSaturation
+// and ImageOpacity, like Homepage's background settings). Takes ownership of the surface and returns
+// the filtered surface. Blurred images are returned at a reduced size; they are stretched to the
+// screen when drawn anyway.
+SDL_Surface *apply_background_filters(SDL_Surface *surface)
+{
+    if (surface == NULL)
+        return NULL;
+    bool blur = config.image_blur > 0.0f;
+    if (!blur && config.image_brightness == 1.0f && config.image_saturation == 1.0f && config.image_opacity == 1.0f)
+        return surface;
+
+    SDL_Surface *image = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_FreeSurface(surface);
+    if (image == NULL)
+        return NULL;
+
+    if (blur) {
+        // Blur a quarter-size copy: much faster, and invisible after blurring
+        int scale = 4;
+        SDL_Surface *small = SDL_CreateRGBSurfaceWithFormat(0, image->w / scale > 0 ? image->w / scale : 1,
+                                 image->h / scale > 0 ? image->h / scale : 1, 32, SDL_PIXELFORMAT_ARGB8888);
+        if (small != NULL) {
+#if SDL_VERSION_ATLEAST(2, 0, 16)
+            SDL_SoftStretchLinear(image, NULL, small, NULL);
+#else
+            SDL_BlitScaled(image, NULL, small, NULL);
+#endif
+            SDL_FreeSurface(image);
+            image = small;
+
+            // Radius in pixels of the reduced image, from CSS pixels at 1920 px screen width
+            int radius = (int) (config.image_blur * (float) geo.screen_width / 1920.0f / (float) scale + 0.5f);
+            if (radius < 1)
+                radius = 1;
+            int w = image->w, h = image->h;
+            float *channels[3], *tmp = malloc(sizeof(float) * (size_t) (w * h));
+            SDL_LockSurface(image);
+            for (int c = 0; c < 3; c++) {
+                channels[c] = malloc(sizeof(float) * (size_t) (w * h));
+                for (int y = 0; y < h; y++) {
+                    const Uint32 *row = (const Uint32*) ((const Uint8*) image->pixels + y * image->pitch);
+                    for (int x = 0; x < w; x++)
+                        channels[c][y * w + x] = (float) ((row[x] >> (16 - 8 * c)) & 0xFF);
+                }
+                for (int pass = 0; pass < 3; pass++) {
+                    box_blur(channels[c], tmp, w, h, radius, true);
+                    box_blur(tmp, channels[c], w, h, radius, false);
+                }
+            }
+            for (int y = 0; y < h; y++) {
+                Uint32 *row = (Uint32*) ((Uint8*) image->pixels + y * image->pitch);
+                for (int x = 0; x < w; x++) {
+                    Uint32 rgb = 0;
+                    for (int c = 0; c < 3; c++)
+                        rgb |= (Uint32) (channels[c][y * w + x] + 0.5f) << (16 - 8 * c);
+                    row[x] = 0xFF000000u | rgb;
+                }
+            }
+            SDL_UnlockSurface(image);
+            for (int c = 0; c < 3; c++)
+                free(channels[c]);
+            free(tmp);
+        }
+    }
+
+    // Per-pixel filters: saturation, brightness, then opacity over the background color
+    SDL_Color bg = config.background_color;
+    SDL_LockSurface(image);
+    for (int y = 0; y < image->h; y++) {
+        Uint32 *row = (Uint32*) ((Uint8*) image->pixels + y * image->pitch);
+        for (int x = 0; x < image->w; x++) {
+            float rgb[3] = {(float) ((row[x] >> 16) & 0xFF), (float) ((row[x] >> 8) & 0xFF), (float) (row[x] & 0xFF)};
+            float gray = 0.2126f * rgb[0] + 0.7152f * rgb[1] + 0.0722f * rgb[2];
+            float under[3] = {(float) bg.r, (float) bg.g, (float) bg.b};
+            Uint32 out = 0xFF000000u;
+            for (int c = 0; c < 3; c++) {
+                float v = (gray + (rgb[c] - gray) * config.image_saturation) * config.image_brightness;
+                v = under[c] + (v - under[c]) * config.image_opacity;
+                v = v < 0.0f ? 0.0f : (v > 255.0f ? 255.0f : v);
+                out |= (Uint32) (v + 0.5f) << (16 - 8 * c);
+            }
+            row[x] = out;
+        }
+    }
+    SDL_UnlockSurface(image);
+    return image;
 }
 
 // A function to load a font from a file

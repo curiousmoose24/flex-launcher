@@ -324,6 +324,11 @@ typedef struct {
     float column_focus_scale; // Size of the selected column icon relative to the others (0 = automatic)
     Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
     WaveColorMode wave_color_mode;
+    Uint32 image_refresh; // Reload a URL background image this often, in ms (0 = at startup only)
+    float image_blur; // Blur radius in pixels at 1920 px screen width (Homepage's blur sizes)
+    float image_brightness; // 1.0 = unchanged
+    float image_saturation; // 1.0 = unchanged
+    float image_opacity; // Opacity of the image over the background color, 1.0 = opaque
     SDL_Color wave_color;
     bool wave_time_of_day; // Wave background brightness follows the time of day
     bool sounds_enabled;

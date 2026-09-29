@@ -1,0 +1,273 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
+#include <SDL.h>
+#include <SDL_image.h>
+#include <SDL_ttf.h>
+#ifdef __unix__
+#include <sys/stat.h>
+#endif
+#ifdef HAVE_CURL
+#include <curl/curl.h>
+#endif
+#include "launcher.h"
+#include <launcher_config.h>
+#include "webimage.h"
+#include "image.h"
+#include "util.h"
+#include "debug.h"
+
+// Background images from a URL, like Homepage's background setting, e.g.
+// Image=https://picsum.photos/{width}/{height} for a random photo sized to the screen.
+// The last image is cached so it shows immediately at startup; a fresh image is then
+// downloaded in a separate thread and faded in, and again every ImageRefresh minutes.
+
+extern Config config;
+extern Ticks ticks;
+extern Geometry geo;
+extern SDL_Renderer *renderer;
+extern SDL_Texture *background_texture;
+
+#define MAX_IMAGE_BYTES (50 * 1024 * 1024)
+#define DOWNLOAD_TIMEOUT_SECONDS 60L
+#define RETRY_PERIOD (5 * 60 * 1000)
+
+enum { DOWNLOAD_IDLE, DOWNLOAD_RUNNING, DOWNLOAD_DONE };
+
+static char *url = NULL;
+static char cache_path[MAX_PATH_CHARS + 1] = "";
+static SDL_Thread *download_thread = NULL;
+static SDL_atomic_t download_state;
+static SDL_atomic_t abort_download;
+static SDL_Surface *downloaded_surface = NULL; // Set by the download thread
+static Uint32 next_download = 0;
+static SDL_Texture *fade_texture = NULL;
+static Uint32 fade_start = 0;
+
+bool is_web_image(const char *path)
+{
+    return path != NULL && (!strncmp(path, "http://", 7) || !strncmp(path, "https://", 8));
+}
+
+// A function to replace {width} and {height} in the URL with the screen size
+static char *expand_url(const char *template)
+{
+    char buffer[2048] = "";
+    const char *p = template;
+    while (*p != '\0' && strlen(buffer) < sizeof(buffer) - 16) {
+        if (!strncmp(p, "{width}", 7)) {
+            snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%i", geo.screen_width);
+            p += 7;
+        }
+        else if (!strncmp(p, "{height}", 8)) {
+            snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%i", geo.screen_height);
+            p += 8;
+        }
+        else {
+            size_t length = strlen(buffer);
+            buffer[length] = *p++;
+            buffer[length + 1] = '\0';
+        }
+    }
+    return strdup(buffer);
+}
+
+// A function to find (and create) the cache file location
+static void init_cache_path()
+{
+#ifdef __unix__
+    char dir[MAX_PATH_CHARS + 1];
+    const char *xdg = getenv("XDG_CACHE_HOME");
+    const char *home = getenv("HOME");
+    if (xdg != NULL && xdg[0] != '\0')
+        snprintf(dir, sizeof(dir), "%s", xdg);
+    else if (home != NULL)
+        snprintf(dir, sizeof(dir), "%s/.cache", home);
+    else
+        return;
+    mkdir(dir, 0755);
+    size_t length = strlen(dir);
+    snprintf(dir + length, sizeof(dir) - length, "/%s", EXECUTABLE_TITLE);
+    mkdir(dir, 0755);
+    snprintf(cache_path, sizeof(cache_path), "%s/wallpaper", dir);
+#endif
+}
+
+#ifdef HAVE_CURL
+typedef struct {
+    char *data;
+    size_t size;
+} Buffer;
+
+static size_t write_callback(char *ptr, size_t size, size_t count, void *userdata)
+{
+    Buffer *buffer = (Buffer*) userdata;
+    size_t length = size * count;
+    if (buffer->size + length > MAX_IMAGE_BYTES)
+        return 0;
+    char *data = realloc(buffer->data, buffer->size + length);
+    if (data == NULL)
+        return 0;
+    memcpy(data + buffer->size, ptr, length);
+    buffer->data = data;
+    buffer->size += length;
+    return length;
+}
+
+// Stops the transfer when the launcher quits
+static int progress_callback(void *userdata, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
+{
+    (void) userdata; (void) dltotal; (void) dlnow; (void) ultotal; (void) ulnow;
+    return SDL_AtomicGet(&abort_download) ? 1 : 0;
+}
+
+// Download thread: fetch the image, cache it, and apply the background filters
+static int download_image(void *data)
+{
+    (void) data;
+    SDL_Surface *surface = NULL;
+    Buffer buffer = {NULL, 0};
+    CURL *curl = curl_easy_init();
+    if (curl != NULL) {
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, DOWNLOAD_TIMEOUT_SECONDS);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, EXECUTABLE_TITLE);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
+        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
+        CURLcode result = curl_easy_perform(curl);
+        if (result != CURLE_OK)
+            log_error("Could not download background image %s\n%s", url, curl_easy_strerror(result));
+        else {
+            surface = IMG_Load_RW(SDL_RWFromConstMem(buffer.data, (int) buffer.size), 1);
+            if (surface == NULL)
+                log_error("Could not decode background image %s\n%s", url, IMG_GetError());
+            else if (cache_path[0] != '\0') {
+                FILE *file = fopen(cache_path, "wb");
+                if (file != NULL) {
+                    fwrite(buffer.data, 1, buffer.size, file);
+                    fclose(file);
+                }
+            }
+        }
+        curl_easy_cleanup(curl);
+    }
+    free(buffer.data);
+    downloaded_surface = apply_background_filters(surface);
+    SDL_AtomicSet(&download_state, DOWNLOAD_DONE);
+    return 0;
+}
+#endif
+
+static void start_download()
+{
+#ifdef HAVE_CURL
+    if (SDL_AtomicGet(&download_state) != DOWNLOAD_IDLE)
+        return;
+    SDL_AtomicSet(&download_state, DOWNLOAD_RUNNING);
+    download_thread = SDL_CreateThread(download_image, "Background Download Thread", NULL);
+    if (download_thread == NULL)
+        SDL_AtomicSet(&download_state, DOWNLOAD_IDLE);
+#endif
+}
+
+// A function to show the cached image right away and start downloading a new one
+void init_web_background()
+{
+#ifdef HAVE_CURL
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    SDL_AtomicSet(&download_state, DOWNLOAD_IDLE);
+    SDL_AtomicSet(&abort_download, 0);
+    url = expand_url(config.background_image);
+    log_debug("Background image URL: %s", url);
+    init_cache_path();
+    if (cache_path[0] != '\0') {
+        SDL_Surface *cached = IMG_Load(cache_path);
+        if (cached != NULL)
+            background_texture = load_texture(apply_background_filters(cached));
+    }
+    start_download();
+#else
+    log_error("This build can't load background images from URLs (built without libcurl)");
+#endif
+}
+
+// A function to fade in a finished download, and start new downloads when they are due
+void update_web_background()
+{
+    if (url == NULL)
+        return;
+
+    // A download finished: fade the new image in
+    if (SDL_AtomicGet(&download_state) == DOWNLOAD_DONE) {
+        SDL_WaitThread(download_thread, NULL);
+        download_thread = NULL;
+        if (downloaded_surface != NULL) {
+            SDL_DestroyTexture(fade_texture);
+            fade_texture = load_texture(downloaded_surface);
+            fade_start = ticks.main;
+            next_download = config.image_refresh > 0 ? ticks.main + config.image_refresh : 0;
+        }
+        else
+            next_download = ticks.main + (config.image_refresh > 0 && config.image_refresh < RETRY_PERIOD ?
+                                          config.image_refresh : RETRY_PERIOD);
+        downloaded_surface = NULL;
+        SDL_AtomicSet(&download_state, DOWNLOAD_IDLE);
+    }
+
+    // Finish the fade
+    if (fade_texture != NULL && ticks.main - fade_start >= config.slideshow_transition_time) {
+        SDL_DestroyTexture(background_texture);
+        background_texture = fade_texture;
+        SDL_SetTextureAlphaMod(background_texture, 0xFF);
+        fade_texture = NULL;
+    }
+
+    // Time for a new image
+    if (next_download != 0 && fade_texture == NULL && (Sint32) (ticks.main - next_download) >= 0) {
+        next_download = 0;
+        start_download();
+    }
+}
+
+// A function to draw the new image fading in over the current one
+void draw_web_background_transition()
+{
+    if (fade_texture == NULL)
+        return;
+    Uint32 elapsed = ticks.main - fade_start;
+    Uint32 duration = config.slideshow_transition_time > 0 ? config.slideshow_transition_time : 1;
+    Uint8 alpha = elapsed >= duration ? 0xFF : (Uint8) (255 * elapsed / duration);
+    SDL_SetTextureBlendMode(fade_texture, SDL_BLENDMODE_BLEND);
+    SDL_SetTextureAlphaMod(fade_texture, alpha);
+    SDL_RenderCopy(renderer, fade_texture, NULL, NULL);
+}
+
+// A function to stop any download in progress and free the background resources
+void quit_web_background()
+{
+    if (url == NULL)
+        return;
+    SDL_AtomicSet(&abort_download, 1);
+    if (download_thread != NULL) {
+        SDL_WaitThread(download_thread, NULL);
+        download_thread = NULL;
+    }
+    if (downloaded_surface != NULL) {
+        SDL_FreeSurface(downloaded_surface);
+        downloaded_surface = NULL;
+    }
+    if (fade_texture != NULL) {
+        SDL_DestroyTexture(fade_texture);
+        fade_texture = NULL;
+    }
+    free(url);
+    url = NULL;
+#ifdef HAVE_CURL
+    curl_global_cleanup();
+#endif
+}

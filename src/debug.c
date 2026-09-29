@@ -121,6 +121,11 @@ void debug_settings()
     else
         DEBUG_COLOR(SETTING_WAVE_COLOR, config.wave_color);
     DEBUG_BOOL(SETTING_WAVE_TIME_OF_DAY, config.wave_time_of_day);
+    DEBUG_INT(SETTING_IMAGE_REFRESH, (int) (config.image_refresh / 60000));
+    log_debug("%-25s %.0f px", SETTING_IMAGE_BLUR ":", (double) config.image_blur);
+    log_debug("%-25s %.0f%%", SETTING_IMAGE_BRIGHTNESS ":", (double) (config.image_brightness * 100.0f));
+    log_debug("%-25s %.0f%%", SETTING_IMAGE_SATURATION ":", (double) (config.image_saturation * 100.0f));
+    log_debug("%-25s %.0f%%", SETTING_IMAGE_OPACITY ":", (double) (config.image_opacity * 100.0f));
     DEBUG_STR(SETTING_BACKGROUND_IMAGE, config.background_image);
     DEBUG_STR(SETTING_SLIDESHOW_DIRECTORY, config.slideshow_directory);
     DEBUG_INT(SETTING_SLIDESHOW_IMAGE_DURATION, config.slideshow_image_duration / 1000);

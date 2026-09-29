@@ -35,3 +35,4 @@ SDL_Texture *render_highlight(int width, int height, SDL_Rect *rect);
 SDL_Surface *render_text(const char *text, TextInfo *info, SDL_Rect *rect, int *text_height);
 SDL_Texture *render_text_texture(const char *text, TextInfo *info, SDL_Rect *rect, int *text_height);
 SDL_Texture *render_glow_texture(SDL_Surface *text, SDL_Color color, int *padding);
+SDL_Surface *apply_background_filters(SDL_Surface *surface);
