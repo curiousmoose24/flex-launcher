@@ -217,7 +217,7 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define SPARKLE_TEXTURE_SIZE 32
 #define SPARKLE_GLOW_TEXTURE_SIZE 64
 #define SPARKLE_GLOW_SCALE 5.0f    // Glow diameter relative to the speck
-#define SPARKLE_GLOW_OPACITY 0.45f // Glow brightness relative to the speck
+#define SPARKLE_GLOW_OPACITY 0.225f // Glow brightness relative to the speck
 
 typedef struct {
     float born;          // Seconds
