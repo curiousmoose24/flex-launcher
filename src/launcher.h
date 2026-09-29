@@ -203,6 +203,7 @@ typedef struct menu {
     Entry        *all_entries; // First entry, including hidden ones
     Entry        *root_entry;
     Entry        *last_selected_entry;
+    int          default_entry; // Entry (1 = first visible) selected when the menu's column is switched to; 0 = the last selected
     struct menu  *next;
     struct menu  *back;
 } Menu;

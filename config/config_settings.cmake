@@ -1,5 +1,6 @@
 # Config setting keys
 set(SETTING_DEFAULT_MENU "DefaultMenu")
+set(SETTING_DEFAULT_ENTRY "DefaultEntry")
 set(SETTING_MAX_BUTTONS "MaxButtons")
 set(SETTING_SCROLL_MODE "ScrollMode")
 set(SETTING_SCROLL_TIME "ScrollTime")

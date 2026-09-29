@@ -535,6 +535,14 @@ int config_handler(void *user, const char *section, const char *name, const char
             }
         }
 
+        // The entry a column starts on, instead of the last selected one
+        if (MATCH(name, SETTING_DEFAULT_ENTRY)) {
+            int default_entry = atoi(value);
+            if (default_entry > 0)
+                menu->default_entry = default_entry;
+            return 1;
+        }
+
         // Parse entry line for title, icon path, command
         char *string = (char*) value;
         char *token;

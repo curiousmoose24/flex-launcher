@@ -558,6 +558,9 @@ The Selected Icon Override feature allows the user to define a different icon fo
 
 For example, if the icon path for an entry is defined as `C:\icons\kodi.png`, then the program will check for the existence of `C:\icons\kodi_selected.png` and, if it exists, this icon will be shown when the entry is selected instead of the default. This feature allows the user to implement custom highlight effects such as glowing, color changes, etc.
 
+### Default Entry
+A menu section can set `DefaultEntry=N` to start on its Nth entry (counting the entries that are shown) instead of the one selected last. In `Column` [SubmenuMode](#submenumode), the column starts on that entry every time it's switched to, so the entries before it sit above the menu row. For example, `DefaultEntry=2` puts the first entry above the row and selects the second.
+
 ### Special Commands
 Special commands are commands that are internal to Flex Launcher and begin with a colon. The following is a list of special commands:
 

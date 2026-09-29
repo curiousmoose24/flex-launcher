@@ -850,6 +850,7 @@ static void draw_carousel_buttons()
 // Column state: the submenu of the selected entry, shown vertically below it (SubmenuMode=Column)
 static Menu *column_menu = NULL;
 static Entry *column_entry = NULL;
+static Menu *focused_column_menu = NULL; // The column last switched to (not cleared when the menu is laid out again)
 static float column_offset_start = 0.0f;
 static Uint32 column_anim_start = 0;
 
@@ -873,14 +874,24 @@ static void update_column()
     if (strncmp(cmd, SCMD_SUBMENU, length) != 0 || cmd[length] != ' ')
         return;
     Menu *menu = get_menu(cmd + length + 1);
-    if (menu == NULL || menu == current_menu || menu->num_entries == 0)
+    if (menu == NULL || menu == current_menu || menu->num_entries == 0) {
+        focused_column_menu = NULL;
         return;
+    }
     if (menu->rendered == false)
         render_buttons(menu);
 
-    // Each column remembers its selected entry
+    // Each column remembers its selected entry, unless it has a DefaultEntry to start on
+    // whenever it's switched to (laying out the same column again keeps the selection)
     column_menu = menu;
     column_entry = menu->last_selected_entry != NULL ? menu->last_selected_entry : menu->first_entry;
+    if (menu->default_entry > 0 && menu != focused_column_menu) {
+        column_entry = menu->first_entry;
+        for (int i = 1; i < menu->default_entry && column_entry->next != NULL; i++)
+            column_entry = column_entry->next;
+        menu->last_selected_entry = column_entry;
+    }
+    focused_column_menu = menu;
 }
 
 // Get the current offset of the column scroll animation, in entries (ease-out)
