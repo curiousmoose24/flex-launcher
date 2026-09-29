@@ -114,8 +114,10 @@ void debug_settings()
     log_debug("===================== Background =======================\n");
     DEBUG_MODE(SETTING_BACKGROUND_MODE, MODE_SETTING_BACKGROUND, config.background_mode);
     DEBUG_COLOR(SETTING_BACKGROUND_COLOR, config.background_color);
-    if (config.wave_color_auto)
+    if (config.wave_color_mode == WAVE_COLOR_MONTH)
         log_debug("%-25s %s", SETTING_WAVE_COLOR ":", "Auto");
+    else if (config.wave_color_mode == WAVE_COLOR_SKY)
+        log_debug("%-25s %s", SETTING_WAVE_COLOR ":", "Sky");
     else
         DEBUG_COLOR(SETTING_WAVE_COLOR, config.wave_color);
     DEBUG_BOOL(SETTING_WAVE_TIME_OF_DAY, config.wave_time_of_day);

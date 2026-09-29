@@ -187,7 +187,10 @@ Defines the opacity of the background overlay. Must be a percent value.
 Default: 50%
 
 ##### WaveColor
-When `Mode` is set to "Wave", this setting defines the base color of the background, in hex format, e.g. `#2D6FD6`. The value "Auto" changes the color each month, like the PS3.
+When `Mode` is set to "Wave", this setting defines the color of the background. Possible values:
+- A color in hex format, e.g. `#2D6FD6`.
+- "Auto": the color changes each month, like the PS3.
+- "Sky": sky colors that follow the time of day: deep navy at night, a warm horizon at dawn, blues during the day, orange at sunset and purple at dusk. The colors blend smoothly as the day goes on. [WaveTimeOfDay](#wavetimeofday) only dims the ribbons in this mode, since the sky colors already get darker at night.
 
 Default: Auto
 

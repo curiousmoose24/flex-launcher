@@ -36,6 +36,58 @@ static const SDL_Color month_colors[12] = {
     {0xC0, 0x39, 0x2B, 0xFF}  // Red
 };
 
+// Sky colors through the day for WaveColor=Sky: the gradient's top and bottom (horizon)
+// colors at times of day, blended smoothly in between. Daytime colors are kept deep
+// enough for white text to stay readable.
+typedef struct {
+    float hour;
+    SDL_Color top;
+    SDL_Color bottom;
+} SkyKeyframe;
+
+static const SkyKeyframe sky_keyframes[] = {
+    { 0.0f, {0x0B, 0x10, 0x26, 0xFF}, {0x05, 0x07, 0x0F, 0xFF}}, // Night
+    { 4.5f, {0x0E, 0x14, 0x33, 0xFF}, {0x0A, 0x0C, 0x1C, 0xFF}}, // Late night
+    { 5.5f, {0x1B, 0x1F, 0x4B, 0xFF}, {0x3A, 0x2A, 0x5A, 0xFF}}, // Pre-dawn
+    { 6.5f, {0x3A, 0x55, 0x9A, 0xFF}, {0xE0, 0x86, 0x62, 0xFF}}, // Dawn
+    { 8.0f, {0x3D, 0x7C, 0xC9, 0xFF}, {0x7F, 0xB5, 0xE0, 0xFF}}, // Morning
+    {12.0f, {0x1F, 0x6F, 0xC5, 0xFF}, {0x5F, 0xA8, 0xE0, 0xFF}}, // Midday
+    {16.0f, {0x2F, 0x77, 0xC0, 0xFF}, {0xC8, 0xA6, 0x6A, 0xFF}}, // Afternoon
+    {18.5f, {0x4E, 0x40, 0x8C, 0xFF}, {0xD8, 0x72, 0x3A, 0xFF}}, // Sunset
+    {20.0f, {0x2A, 0x24, 0x62, 0xFF}, {0x5E, 0x33, 0x70, 0xFF}}, // Dusk
+    {21.5f, {0x0E, 0x14, 0x33, 0xFF}, {0x08, 0x0A, 0x18, 0xFF}}, // Night
+    {24.0f, {0x0B, 0x10, 0x26, 0xFF}, {0x05, 0x07, 0x0F, 0xFF}}  // Night (wraps to midnight)
+};
+
+static SDL_Color mix_colors(SDL_Color a, SDL_Color b, float t)
+{
+    return (SDL_Color) {
+        (Uint8) ((float) a.r + ((float) b.r - (float) a.r) * t + 0.5f),
+        (Uint8) ((float) a.g + ((float) b.g - (float) a.g) * t + 0.5f),
+        (Uint8) ((float) a.b + ((float) b.b - (float) a.b) * t + 0.5f),
+        0xFF
+    };
+}
+
+// A function to get the sky gradient colors for an hour of the day (0-24)
+static void sky_colors(float hour, SDL_Color *top, SDL_Color *bottom)
+{
+    size_t count = sizeof(sky_keyframes) / sizeof(sky_keyframes[0]);
+    for (size_t i = 0; i + 1 < count; i++) {
+        const SkyKeyframe *a = &sky_keyframes[i];
+        const SkyKeyframe *b = &sky_keyframes[i + 1];
+        if (hour >= a->hour && hour <= b->hour) {
+            float t = (hour - a->hour) / (b->hour - a->hour);
+            t = t * t * (3.0f - 2.0f * t); // Smoothstep for gentler transitions
+            *top = mix_colors(a->top, b->top, t);
+            *bottom = mix_colors(a->bottom, b->bottom, t);
+            return;
+        }
+    }
+    *top = sky_keyframes[0].top;
+    *bottom = sky_keyframes[0].bottom;
+}
+
 // A ribbon: a band following a moving sine wave, which is brightest along its center
 typedef struct {
     float base_y;      // Vertical center, fraction of screen height
@@ -137,7 +189,6 @@ void draw_wave_background(Uint32 ticks)
 #if SDL_VERSION_ATLEAST(2, 0, 18)
     time_t t = time(NULL);
     struct tm *now = localtime(&t);
-    SDL_Color base = config.wave_color_auto ? month_colors[now->tm_mon] : config.wave_color;
     float brightness = time_of_day_brightness(now);
     float seconds = (float) ticks / 1000.0f;
 
@@ -146,7 +197,17 @@ void draw_wave_background(Uint32 ticks)
     SDL_GetRenderDrawBlendMode(renderer, &mode);
 
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-    draw_gradient(scale_color(base, 0.85f * brightness, 0xFF), scale_color(base, 0.25f * brightness, 0xFF));
+    if (config.wave_color_mode == WAVE_COLOR_SKY) {
+        // The sky colors already get darker at night
+        SDL_Color top, bottom;
+        float hour = (float) now->tm_hour + (float) now->tm_min / 60.0f + (float) now->tm_sec / 3600.0f;
+        sky_colors(hour, &top, &bottom);
+        draw_gradient(top, bottom);
+    }
+    else {
+        SDL_Color base = config.wave_color_mode == WAVE_COLOR_MONTH ? month_colors[now->tm_mon] : config.wave_color;
+        draw_gradient(scale_color(base, 0.85f * brightness, 0xFF), scale_color(base, 0.25f * brightness, 0xFF));
+    }
 
     // Additive blending makes overlapping ribbons glow
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_ADD);

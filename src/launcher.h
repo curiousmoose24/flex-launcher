@@ -98,6 +98,12 @@ typedef enum {
 } ModeSubmenu;
 
 typedef enum {
+    WAVE_COLOR_FIXED,  // WaveColor=#RRGGBB
+    WAVE_COLOR_MONTH,  // WaveColor=Auto: a color for each month
+    WAVE_COLOR_SKY     // WaveColor=Sky: sky colors that follow the time of day
+} WaveColorMode;
+
+typedef enum {
     SOUND_MOVE,
     SOUND_SELECT,
     SOUND_BACK,
@@ -317,7 +323,7 @@ typedef struct {
     float column_icon_scale; // Size of column icons relative to IconSize
     float column_focus_scale; // Size of the selected column icon relative to the others (0 = automatic)
     Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
-    bool wave_color_auto; // Wave background color changes by month
+    WaveColorMode wave_color_mode;
     SDL_Color wave_color;
     bool wave_time_of_day; // Wave background brightness follows the time of day
     bool sounds_enabled;

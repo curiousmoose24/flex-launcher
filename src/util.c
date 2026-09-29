@@ -225,9 +225,11 @@ int config_handler(void *user, const char *section, const char *name, const char
             hex_to_color(value, &config.background_color);
         else if (MATCH(name, SETTING_WAVE_COLOR)) {
             if (MATCH(value, "Auto"))
-                config.wave_color_auto = true;
+                config.wave_color_mode = WAVE_COLOR_MONTH;
+            else if (MATCH(value, "Sky"))
+                config.wave_color_mode = WAVE_COLOR_SKY;
             else if (hex_to_color(value, &config.wave_color))
-                config.wave_color_auto = false;
+                config.wave_color_mode = WAVE_COLOR_FIXED;
         }
         else if (MATCH(name, SETTING_WAVE_TIME_OF_DAY))
             convert_bool(value, &config.wave_time_of_day);
