@@ -271,6 +271,8 @@ int config_handler(void *user, const char *section, const char *name, const char
             convert_bool(value, &config.wave_time_of_day);
         else if (MATCH(name, SETTING_WAVE_SPARKLES))
             convert_bool(value, &config.wave_sparkles);
+        else if (MATCH(name, SETTING_CONTEXT_ENTRIES))
+            convert_bool(value, &config.context_entries);
         else if (MATCH(name, SETTING_BACKGROUND_IMAGE)) {
             config.background_image = strdup(value);
             clean_path(config.background_image);

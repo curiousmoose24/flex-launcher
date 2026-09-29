@@ -123,6 +123,7 @@ void debug_settings()
         DEBUG_COLOR(SETTING_WAVE_COLOR, config.wave_color);
     DEBUG_BOOL(SETTING_WAVE_TIME_OF_DAY, config.wave_time_of_day);
     DEBUG_BOOL(SETTING_WAVE_SPARKLES, config.wave_sparkles);
+    DEBUG_BOOL(SETTING_CONTEXT_ENTRIES, config.context_entries);
     DEBUG_INT(SETTING_IMAGE_REFRESH, (int) (config.image_refresh / 60000));
     log_debug("%-25s %s", SETTING_IMAGE_JSON ":", config.image_json ? config.image_json : "(none)");
     log_debug("%-25s %s", SETTING_IMAGE_KEYWORDS ":", config.image_keywords ? config.image_keywords : "(none)");

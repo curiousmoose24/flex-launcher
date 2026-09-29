@@ -142,6 +142,7 @@ The settings in this section control what Flex Launcher will display in the back
 - [WaveColor](#wavecolor)
 - [WaveTimeOfDay](#wavetimeofday)
 - [WaveSparkles](#wavesparkles)
+- [ContextEntries](#contextentries)
 
 ##### Mode
 Defines what mode the background will be. Possible values: "Color", "Image", "Slideshow", "Transparent", and "Wave"
@@ -255,6 +256,11 @@ Default: true
 If set to `true`, soft specks of light scattered around the [Wave](#mode) background's ribbons drift, twinkle and fade, like the particles of the PlayStation 3 slim's XMB. They are born near the ribbons but move on their own, mostly drifting slowly sideways and living only a second or two, while some speed up and whoosh away. Some of the longer-lived sparkles move towards or away from the viewer, growing to double or shrinking to half their size. This setting is a boolean "true" or "false".
 
 Default: true
+
+##### ContextEntries
+If set to `true`, menu entries that only apply to one kind of background are shown only while that background is on: entries with the [:togglesparkles](#togglesparkles) command only with the `Wave` background, and entries with the [:wallpaper](#wallpaper) command only with the picture background. Entries appear and disappear when the background is switched with [:togglebackground](#togglebackground). This setting is a boolean "true" or "false".
+
+Default: false
 
 #### Layout
 The settings in this section define the geometric layout of the launcher.

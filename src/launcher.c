@@ -47,6 +47,8 @@ static void draw_title_glow(Entry *entry, const SDL_Rect *text_rect, float stren
 static void load_picture_background(void);
 static void toggle_background(void);
 static void toggle_sparkles(void);
+static void init_entry_lists(void);
+static void filter_menus(void);
 static bool column_active(void);
 static void update_column(void);
 static float column_offset(void);
@@ -166,6 +168,7 @@ Config config = {
     .wave_color                       = {0x2D, 0x6F, 0xD6, 0xFF},
     .wave_time_of_day                 = DEFAULT_WAVE_TIME_OF_DAY,
     .wave_sparkles                    = DEFAULT_WAVE_SPARKLES,
+    .context_entries                  = DEFAULT_CONTEXT_ENTRIES,
     .sounds_enabled                   = DEFAULT_SOUNDS_ENABLED,
     .sound_volume                     = SDL_MIX_MAXVOLUME / 2,
     .sound_paths                      = {NULL},
@@ -432,14 +435,14 @@ static void cleanup()
     Menu *tmp_menu = NULL;
     for (size_t i = 0; i < config.num_menus; i++) {
         free(menu->name);
-        entry = menu->first_entry;
-        for(size_t j = 0; j < menu->num_entries; j++) {
+        entry = menu->all_entries;
+        while (entry != NULL) {
             free(entry->title);
             free(entry->icon_path);
             free(entry->icon_selected_path);
             free(entry->cmd);
             tmp_entry = entry;
-            entry = entry->next;
+            entry = entry->all_next;
             free(tmp_entry);
         }
         tmp_menu = menu;
@@ -1086,7 +1089,7 @@ static void render_buttons(Menu *menu)
 {
     Entry *entry;
     int h;
-    for (entry = menu->first_entry; entry != NULL; entry = entry->next) {
+    for (entry = menu->all_entries; entry != NULL; entry = entry->all_next) { // Hidden entries too
         entry->icon = load_texture_from_file(entry->icon_path);
         entry->icon_selected = (entry->icon_selected_path != NULL) ? load_texture_from_file(entry->icon_selected_path) : NULL;
         entry->icon_off = NULL;
@@ -1844,12 +1847,71 @@ static void toggle_background()
         return;
     set_draw_color();
     start_fade_in();
+    if (config.context_entries)
+        filter_menus();
     log_debug("Background mode: %s", get_mode_setting(MODE_SETTING_BACKGROUND, config.background_mode));
 
     if (config.config_file_path != NULL &&
     !save_config_setting(config.config_file_path, "Background", SETTING_BACKGROUND_MODE,
         get_mode_setting(MODE_SETTING_BACKGROUND, config.background_mode)))
         log_error("Could not save the background setting to the config file");
+}
+
+// A function to remember every menu's full entry list, so entries can be hidden and shown again
+static void init_entry_lists()
+{
+    for (Menu *menu = config.first_menu; menu != NULL; menu = menu->next) {
+        menu->all_entries = menu->first_entry;
+        for (Entry *entry = menu->first_entry; entry != NULL; entry = entry->next)
+            entry->all_next = entry->next;
+    }
+}
+
+// A function to check whether an entry applies to the current background (ContextEntries):
+// the sparkles toggle only applies to the Wave background, and wallpaper entries only to pictures
+static bool entry_visible(const Entry *entry)
+{
+    if (!config.context_entries)
+        return true;
+    bool wave = config.background_mode == BACKGROUND_WAVE;
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES))
+        return wave;
+    size_t length = strlen(SCMD_WALLPAPER);
+    if (!strncmp(entry->cmd, SCMD_WALLPAPER, length) && (entry->cmd[length] == '\0' || entry->cmd[length] == ' '))
+        return !wave;
+    return true;
+}
+
+// A function to rebuild each menu's visible entries after the background changes
+static void filter_menus()
+{
+    for (Menu *menu = config.first_menu; menu != NULL; menu = menu->next) {
+        Entry *previous = NULL;
+        menu->first_entry = NULL;
+        menu->num_entries = 0;
+        for (Entry *entry = menu->all_entries; entry != NULL; entry = entry->all_next) {
+            if (!entry_visible(entry))
+                continue;
+            entry->previous = previous;
+            entry->next = NULL;
+            if (previous != NULL)
+                previous->next = entry;
+            else
+                menu->first_entry = entry;
+            previous = entry;
+            menu->num_entries++;
+        }
+        if (menu->last_selected_entry != NULL && !entry_visible(menu->last_selected_entry))
+            menu->last_selected_entry = NULL;
+    }
+
+    // Lay out the current menu again, keeping the selection when it's still visible
+    if (current_menu != NULL && current_entry != NULL) {
+        bool keep = entry_visible(current_entry);
+        if (keep)
+            current_menu->last_selected_entry = current_entry;
+        load_menu(current_menu, false, !keep);
+    }
 }
 
 // A function to turn the Wave background's sparkles on or off, and save the choice to the config file
@@ -1996,7 +2058,10 @@ int main(int argc, char *argv[])
         debug_menu_entries(config.first_menu, config.num_menus);
     }
 
-    // Load the default menu and display it
+    // Hide the entries that don't apply to the starting background, then load the default menu
+    init_entry_lists();
+    if (config.context_entries)
+        filter_menus();
     error = load_menu(default_menu, false, true);
     if (error)
         log_fatal("Could not load default menu %s", config.default_menu);

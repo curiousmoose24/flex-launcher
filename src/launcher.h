@@ -187,8 +187,9 @@ typedef struct entry {
     int            title_glow_padding; // Extra space around the title in the glow texture
     SDL_Rect       text_rect;
     int            title_offset;
-    struct entry   *next;
-    struct entry   *previous;
+    struct entry   *next;     // Next visible entry
+    struct entry   *previous; // Previous visible entry
+    struct entry   *all_next; // Next entry, including hidden ones
 } Entry;
 
 // Linked list for menus
@@ -198,7 +199,8 @@ typedef struct menu {
     bool         rendered;
     unsigned int page;
     unsigned int highlight_position;
-    Entry        *first_entry;
+    Entry        *first_entry; // First visible entry
+    Entry        *all_entries; // First entry, including hidden ones
     Entry        *root_entry;
     Entry        *last_selected_entry;
     struct menu  *next;
@@ -340,6 +342,7 @@ typedef struct {
     float image_saturation; // 1.0 = unchanged
     float image_opacity; // Opacity of the image over the background color, 1.0 = opaque
     SDL_Color wave_color;
+    bool context_entries; // Show background entries (sparkles, wallpapers) only for the background they apply to
     bool wave_sparkles; // Twinkling specks of light drifting around the wave ribbons
     bool wave_time_of_day; // Wave background brightness follows the time of day
     bool sounds_enabled;
