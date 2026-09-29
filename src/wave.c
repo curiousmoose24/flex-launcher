@@ -214,7 +214,8 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 // near the ribbons but move on their own: most drift slowly sideways, more often right than
 // left, and live only a second or two. Some speed up smoothly and whoosh away, fading out or
 // leaving the screen. Positions are worked out from the birth time, so there's no per-frame state.
-#define NUM_SPARKLES 300
+#define NUM_SPARKLES 600
+#define SPARKLE_REST 2.5f          // Average dark time between appearances, relative to the time shown
 #define SPARKLE_FADE_TIME 0.2f      // Seconds to fade in and out (at most): quick, like a glint
 #define SPARKLE_ZOOM_CHANCE 0.10f   // Fraction of sparkles that speed up and whoosh away
 #define SPARKLE_LEAVE_CHANCE 0.2f   // Fraction of zooming sparkles that keep going until they leave the screen
@@ -226,7 +227,8 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define SPARKLE_GLOW_OPACITY 0.225f // Glow brightness relative to the speck
 
 typedef struct {
-    float born;          // Seconds
+    float born;          // Seconds (in the future while it rests between appearances)
+    float rest;          // Seconds it stays dark before appearing
     float life;          // Seconds
     float x;             // Birth position, fraction of screen width
     float y;             // Birth position, fraction of screen height
@@ -259,7 +261,6 @@ static float random_centered()
 
 static void spawn_sparkle(Sparkle *sparkle, float seconds)
 {
-    sparkle->born = seconds;
     sparkle->zoom = random_float(0.0f, 1.0f) < SPARKLE_ZOOM_CHANCE;
 
     // Most live about a second; a few linger up to three
@@ -268,9 +269,14 @@ static void spawn_sparkle(Sparkle *sparkle, float seconds)
     sparkle->life = sparkle->leaves ? 60.0f : // Reborn when it leaves the screen
                     sparkle->zoom ? random_float(1.5f, 3.0f) : 0.5f + 2.5f * r * r;
 
+    // Rest in the dark first, so each sparkle only shows now and then
+    float shown = sparkle->leaves ? 8.0f : sparkle->life; // Leaving takes about 8 seconds
+    sparkle->rest = random_float(0.0f, 2.0f * SPARKLE_REST) * shown;
+    sparkle->born = seconds + sparkle->rest;
+
     // Born near the ribbons, clustered around their center
     sparkle->x = random_float(-0.02f, 1.02f);
-    sparkle->y = ribbon_center(&ribbons[0], sparkle->x, seconds, NULL) / (float) geo.screen_height +
+    sparkle->y = ribbon_center(&ribbons[0], sparkle->x, sparkle->born, NULL) / (float) geo.screen_height +
                  random_centered() * 0.18f;
 
     // Drift sideways, twice as often right as left; about a fifth barely move
@@ -414,8 +420,9 @@ static void draw_sparkles(float seconds, SDL_Color light)
     if (!sparkles_ready) {
         // Stagger the first generation so they don't all appear at once
         for (int i = 0; i < NUM_SPARKLES; i++) {
+            // Start at a random point in the rest-then-shine cycle
             spawn_sparkle(&sparkles[i], seconds);
-            sparkles[i].born -= random_float(0.0f, fminf(sparkles[i].life, 3.0f));
+            sparkles[i].born -= random_float(0.0f, sparkles[i].rest + fminf(sparkles[i].life, 3.0f));
         }
         sparkles_ready = true;
     }
@@ -428,9 +435,11 @@ static void draw_sparkles(float seconds, SDL_Color light)
     for (int i = 0; i < NUM_SPARKLES; i++) {
         Sparkle *sparkle = &sparkles[i];
         float age = seconds - sparkle->born;
-        if (age >= sparkle->life || age < 0.0f) {
+        if (age < 0.0f) // Resting
+            continue;
+        if (age >= sparkle->life) {
             spawn_sparkle(sparkle, seconds);
-            age = 0.0f;
+            continue;
         }
         float x, y;
         sparkle_position(sparkle, age, &x, &y);
