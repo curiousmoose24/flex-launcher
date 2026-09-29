@@ -214,11 +214,11 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 // near the ribbons but move on their own: most drift slowly sideways, more often right than
 // left, and live only a second or two. Some speed up smoothly and whoosh away, fading out or
 // leaving the screen. Positions are worked out from the birth time, so there's no per-frame state.
-#define NUM_SPARKLES 150
+#define NUM_SPARKLES 300
 #define SPARKLE_FADE_TIME 0.4f      // Seconds to fade in and out (at most)
 #define SPARKLE_ZOOM_CHANCE 0.10f   // Fraction of sparkles that speed up and whoosh away
 #define SPARKLE_LEAVE_CHANCE 0.2f   // Fraction of zooming sparkles that keep going until they leave the screen
-#define SPARKLE_SPEED 0.25f        // Scales all sparkle motion
+#define SPARKLE_SPEED 0.125f       // Scales all sparkle motion
 #define SPARKLE_BLUR_TIME 0.035f    // A moving sparkle's streak shows where it was this long ago
 #define SPARKLE_TEXTURE_SIZE 32
 #define SPARKLE_GLOW_TEXTURE_SIZE 64
