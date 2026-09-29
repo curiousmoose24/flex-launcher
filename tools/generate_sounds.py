@@ -36,6 +36,14 @@ def select(t):
     return first + second
 
 
+def off(t):
+    # Two-note falling chime, the reverse of select (played when sounds are turned off)
+    bell = ((1.0, 1.0), (2.0, 0.3), (3.0, 0.1))
+    first = envelope(t, 0.003, 0.06) * tone(1318.5, t, bell)
+    second = envelope(t - 0.07, 0.003, 0.09) * tone(880.0, t, bell) if t >= 0.07 else 0.0
+    return first + second
+
+
 def back(t):
     # Short falling tone
     duration = 0.12
@@ -44,7 +52,7 @@ def back(t):
     return envelope(t, 0.003, 0.05) * (math.sin(phase) + 0.2 * math.sin(2 * phase))
 
 
-SOUNDS = {'move': (move, 0.06), 'select': (select, 0.45), 'back': (back, 0.25)}
+SOUNDS = {'move': (move, 0.06), 'select': (select, 0.45), 'back': (back, 0.25), 'off': (off, 0.45)}
 
 
 def main():

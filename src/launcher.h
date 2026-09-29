@@ -101,6 +101,7 @@ typedef enum {
     SOUND_MOVE,
     SOUND_SELECT,
     SOUND_BACK,
+    SOUND_OFF,
     NUM_SOUNDS
 } SoundType;
 
@@ -166,6 +167,7 @@ typedef struct entry {
     char           *cmd;
     SDL_Texture    *icon;
     SDL_Texture    *icon_selected;
+    SDL_Texture    *icon_off; // Shown instead of the icon while sounds are off (:togglesounds entries)
     SDL_Rect       icon_rect;
     SDL_Texture    *title_texture;
     SDL_Rect       text_rect;

@@ -40,6 +40,7 @@ static void carousel_layout(void);
 static void carousel_move(Direction direction);
 static void draw_carousel_buttons(void);
 static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha);
+static SDL_Texture *entry_icon(Entry *entry, bool selected);
 static bool column_active(void);
 static void update_column(void);
 static float column_offset(void);
@@ -698,6 +699,17 @@ static void carousel_move(Direction direction)
     carousel_anim_start = ticks.main;
 }
 
+// Get the icon to draw for an entry: the "off" icon of a :togglesounds entry while sounds
+// are off, otherwise the selected icon if available
+static SDL_Texture *entry_icon(Entry *entry, bool selected)
+{
+    if (entry->icon_off != NULL && !config.sounds_enabled)
+        return entry->icon_off;
+    if (selected && entry->icon_selected != NULL)
+        return entry->icon_selected;
+    return entry->icon;
+}
+
 // Draw a texture with a temporary opacity
 static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha)
 {
@@ -759,7 +771,7 @@ static void draw_carousel_buttons()
             continue;
 
         Uint8 alpha = (Uint8) ((float) config.unfocused_alpha + (float) (0xFF - config.unfocused_alpha) * closeness + 0.5f);
-        SDL_Texture *icon = (entry == current_entry && entry->icon_selected != NULL) ? entry->icon_selected : entry->icon;
+        SDL_Texture *icon = entry_icon(entry, entry == current_entry);
         render_copy_alpha(icon, &icon_rect, alpha);
 
         if (config.titles_enabled) {
@@ -882,7 +894,7 @@ static void draw_column(float category_center, float category_closeness)
         };
         Uint8 alpha = (Uint8) (((float) config.unfocused_alpha + (float) (0xFF - config.unfocused_alpha) * closeness) *
                                category_closeness + 0.5f);
-        render_copy_alpha(entry->icon, &icon_rect, alpha);
+        render_copy_alpha(entry_icon(entry, false), &icon_rect, alpha);
 
         // Column titles are shown to the right of the icons
         if (config.titles_enabled) {
@@ -1007,6 +1019,14 @@ static void render_buttons(Menu *menu)
     for (entry = menu->first_entry; entry != NULL; entry = entry->next) {
         entry->icon = load_texture_from_file(entry->icon_path);
         entry->icon_selected = (entry->icon_selected_path != NULL) ? load_texture_from_file(entry->icon_selected_path) : NULL;
+        entry->icon_off = NULL;
+        if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS)) {
+            char *off_path = suffixed_path(entry->icon_path, OFF_SUFFIX);
+            if (off_path != NULL) {
+                entry->icon_off = load_texture_from_file(off_path);
+                free(off_path);
+            }
+        }
         if (config.titles_enabled) {
             entry->title_texture = render_text_texture(entry->title, &title_info, &entry->text_rect, &h);
             if (config.title_oversize_mode == OVERSIZE_SHRINK && h != geo.font_height)
@@ -1217,7 +1237,7 @@ static void draw_screen()
         Entry *entry = current_menu->root_entry;
         SDL_Texture *icon;
         for (int i = 0; !carousel_active() && i < geo.num_buttons; i++) {
-            icon = (entry->icon_selected != NULL && i == (int) current_menu->highlight_position) ? entry->icon_selected : entry->icon;
+            icon = entry_icon(entry, i == (int) current_menu->highlight_position);
             SDL_RenderCopy(renderer, icon, NULL, &entry->icon_rect);
             if (config.titles_enabled && (!config.titles_focused_only || i == (int) current_menu->highlight_position))
                 SDL_RenderCopy(renderer, entry->title_texture, NULL, &entry->text_rect);

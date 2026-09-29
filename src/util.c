@@ -353,9 +353,11 @@ int config_handler(void *user, const char *section, const char *name, const char
             if (parse_percent_fraction(value, 0.0f, 1.0f, &volume))
                 config.sound_volume = (int) (volume * (float) SDL_MIX_MAXVOLUME + 0.5f);
         }
-        else if (MATCH(name, SETTING_SOUND_MOVE) || MATCH(name, SETTING_SOUND_SELECT) || MATCH(name, SETTING_SOUND_BACK)) {
+        else if (MATCH(name, SETTING_SOUND_MOVE) || MATCH(name, SETTING_SOUND_SELECT) ||
+        MATCH(name, SETTING_SOUND_BACK) || MATCH(name, SETTING_SOUND_OFF)) {
             SoundType type = MATCH(name, SETTING_SOUND_MOVE) ? SOUND_MOVE :
-                             MATCH(name, SETTING_SOUND_SELECT) ? SOUND_SELECT : SOUND_BACK;
+                             MATCH(name, SETTING_SOUND_SELECT) ? SOUND_SELECT :
+                             MATCH(name, SETTING_SOUND_BACK) ? SOUND_BACK : SOUND_OFF;
             free(config.sound_paths[type]);
             config.sound_paths[type] = strdup(value);
             clean_path(config.sound_paths[type]);
@@ -688,12 +690,18 @@ void clean_path(char *path)
 // A function to get the selected path 
 char *selected_path(const char *path)
 {
+    return suffixed_path(path, SELECTED_SUFFIX);
+}
+
+// A function to get the path of a variant of a file (e.g. icon.png -> icon_off.png), if it exists
+char *suffixed_path(const char *path, const char *suffix)
+{
     char buffer[MAX_PATH_CHARS + 1];
     size_t length = strlen(path);
     char *out = NULL;
 
     // Find file extension
-    if (length + LEN(SELECTED_SUFFIX) + 1 > sizeof(buffer))
+    if (length + strlen(suffix) + 1 > sizeof(buffer))
         return out;
     char *p = (char*) path + length - 1;
     while (*p != '.' && p > path)
@@ -704,7 +712,7 @@ char *selected_path(const char *path)
     // Assemble path with suffix
     strcpy(buffer, path);
     buffer[p - path] = '\0';
-    strcat(buffer, SELECTED_SUFFIX);
+    strcat(buffer, suffix);
     strcat(buffer, p);
 
     if (file_exists(buffer))

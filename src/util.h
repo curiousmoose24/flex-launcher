@@ -10,6 +10,7 @@
 
 #define UNUSED(x) (void)(x)
 #define SELECTED_SUFFIX "_selected"
+#define OFF_SUFFIX "_off"
 #define LEN(x) ((sizeof(x)/sizeof(x[0])) - sizeof(x[0]))
 #define MATCH(x, y) !strcmp(x, y)
 
@@ -31,6 +32,7 @@ bool hex_to_color(const char *string, SDL_Color *color);
 bool convert_bool(const char *string, bool *setting);
 bool is_percent(const char *string);
 char *selected_path(const char *path);
+char *suffixed_path(const char *path, const char *suffix);
 char *join_paths(char *buffer, size_t bytes, int num_paths, ...);
 char *find_file(const char *file, int num_prefixes, const char **prefixes);
 void handle_arguments(int argc, char *argv[], char **config_file_path);

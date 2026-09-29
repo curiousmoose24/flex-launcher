@@ -15,7 +15,7 @@ static SDL_AudioDeviceID device = 0;
 static SDL_AudioSpec device_spec;
 static Uint8 *sound_buffers[NUM_SOUNDS] = {NULL};
 static Uint32 sound_lengths[NUM_SOUNDS] = {0};
-static const char *default_sounds[NUM_SOUNDS] = {"move.wav", "select.wav", "back.wav"};
+static const char *default_sounds[NUM_SOUNDS] = {"move.wav", "select.wav", "back.wav", "off.wav"};
 
 // A function to find a default sound file in the assets directory
 static char *find_default_sound(const char *file)
@@ -127,16 +127,19 @@ void pause_sounds(bool pause)
     SDL_PauseAudioDevice(device, pause ? 1 : 0);
 }
 
-// A function to turn sounds on or off, and save the choice to the config file
+// A function to turn sounds on or off, and save the choice to the config file.
+// Turning sounds on plays the select chime, and turning them off plays the falling "off" chime.
 void toggle_sounds()
 {
-    config.sounds_enabled = !config.sounds_enabled;
     if (config.sounds_enabled) {
+        play_sound(SOUND_OFF);  // Queued before disabling, so it still finishes playing
+        config.sounds_enabled = false;
+    }
+    else {
+        config.sounds_enabled = true;
         init_sounds();
         play_sound(SOUND_SELECT);
     }
-    else if (device != 0)
-        SDL_ClearQueuedAudio(device);
     log_debug("Sounds %s", config.sounds_enabled ? "enabled" : "disabled");
 
     if (config.config_file_path != NULL &&
