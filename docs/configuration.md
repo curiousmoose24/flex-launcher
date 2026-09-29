@@ -592,6 +592,9 @@ Download a new background image now, when [Image](#image) is a URL. Optional key
 #### :togglebackground
 Switch between the `Wave` background and the picture background, and save the choice to the `Mode` setting in the `[Background]` section of the config file. The picture background is `Image` or `Slideshow`: the mode the launcher started in, or, when it started in `Wave` mode, `Image` if the [Image](#image) setting is set, otherwise `Slideshow` if [SlideshowDirectory](#slideshowdirectory) is set. The screen fades in from black when switching. If the entry's icon has an `_off` variant next to it (e.g. `background.svg` and `background_off.svg`), the variant is shown while the picture background is on.
 
+#### :togglesparkles
+Turn the [Wave](#mode) background's sparkles on or off, and save the choice to the [WaveSparkles](#wavesparkles) setting in the `[Background]` section of the config file. When sparkles are turned back on, they reappear gradually. If the entry's icon has an `_off` variant next to it (e.g. `sparkles.svg` and `sparkles_off.svg`), the variant is shown while sparkles are off.
+
 #### :layouts
 Open a popup window listing the console layout schemes, with the current [Scheme](#scheme) marked. The popup takes all input while it is open: up and down (or [:up](#up) and [:down](#down)) move the selection, select chooses the highlighted scheme, saves it to the config file and closes the popup, and back, left or Escape (or [:back](#back)) closes it without changes.
 

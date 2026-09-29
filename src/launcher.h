@@ -50,6 +50,7 @@
 #define SCMD_DOWN ":down"
 #define SCMD_TOGGLE_SOUNDS ":togglesounds"
 #define SCMD_TOGGLE_BACKGROUND ":togglebackground"
+#define SCMD_TOGGLE_SPARKLES ":togglesparkles"
 #define SCMD_WALLPAPER ":wallpaper"
 #define SCMD_LAYOUTS ":layouts"
 #define SCMD_HOME ":home"

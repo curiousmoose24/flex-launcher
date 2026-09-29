@@ -46,6 +46,7 @@ static SDL_Texture *entry_icon(Entry *entry, bool selected);
 static void draw_title_glow(Entry *entry, const SDL_Rect *text_rect, float strength);
 static void load_picture_background(void);
 static void toggle_background(void);
+static void toggle_sparkles(void);
 static bool column_active(void);
 static void update_column(void);
 static float column_offset(void);
@@ -740,6 +741,7 @@ static SDL_Texture *entry_icon(Entry *entry, bool selected)
 {
     if (entry->icon_off != NULL) {
         bool off = !strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS) ? !config.sounds_enabled :
+                   !strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES) ? !config.wave_sparkles :
                    config.background_mode != BACKGROUND_WAVE;
         if (off)
             return entry->icon_off;
@@ -1088,7 +1090,8 @@ static void render_buttons(Menu *menu)
         entry->icon = load_texture_from_file(entry->icon_path);
         entry->icon_selected = (entry->icon_selected_path != NULL) ? load_texture_from_file(entry->icon_selected_path) : NULL;
         entry->icon_off = NULL;
-        if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS) || !strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND)) {
+        if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS) || !strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND) ||
+        !strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES)) {
             char *off_path = suffixed_path(entry->icon_path, OFF_SUFFIX);
             if (off_path != NULL) {
                 entry->icon_off = load_texture_from_file(off_path);
@@ -1395,6 +1398,8 @@ static void execute_command(const char *command)
             toggle_sounds();
         else if (!strcmp(special_command, SCMD_TOGGLE_BACKGROUND))
             toggle_background();
+        else if (!strcmp(special_command, SCMD_TOGGLE_SPARKLES))
+            toggle_sparkles();
         else if (!strcmp(special_command, SCMD_WALLPAPER)) {
             // Optional keywords, then show the picture background with a new image
             new_web_background(strtok(NULL, ""));
@@ -1845,6 +1850,17 @@ static void toggle_background()
     !save_config_setting(config.config_file_path, "Background", SETTING_BACKGROUND_MODE,
         get_mode_setting(MODE_SETTING_BACKGROUND, config.background_mode)))
         log_error("Could not save the background setting to the config file");
+}
+
+// A function to turn the Wave background's sparkles on or off, and save the choice to the config file
+static void toggle_sparkles()
+{
+    config.wave_sparkles = !config.wave_sparkles;
+    log_debug("Sparkles %s", config.wave_sparkles ? "enabled" : "disabled");
+    if (config.config_file_path != NULL &&
+    !save_config_setting(config.config_file_path, "Background", SETTING_WAVE_SPARKLES,
+        config.wave_sparkles ? "true" : "false"))
+        log_error("Could not save the sparkles setting to the config file");
 }
 
 int main(int argc, char *argv[]) 
