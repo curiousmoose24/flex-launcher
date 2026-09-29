@@ -215,6 +215,9 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define NUM_SPARKLES 140
 #define SPARKLE_FADE_TIME 0.8f // Seconds to fade in and out
 #define SPARKLE_TEXTURE_SIZE 32
+#define SPARKLE_GLOW_TEXTURE_SIZE 64
+#define SPARKLE_GLOW_SCALE 5.0f    // Glow diameter relative to the speck
+#define SPARKLE_GLOW_OPACITY 0.45f // Glow brightness relative to the speck
 
 typedef struct {
     float born;          // Seconds
@@ -233,6 +236,7 @@ typedef struct {
 static Sparkle sparkles[NUM_SPARKLES];
 static bool sparkles_ready = false;
 static SDL_Texture *sparkle_texture = NULL;
+static SDL_Texture *sparkle_glow_texture = NULL;
 
 static float random_float(float min, float max)
 {
@@ -282,6 +286,31 @@ static SDL_Texture *create_sparkle_texture()
     return texture;
 }
 
+// A function to create the sparkle glow texture: a wide, soft Gaussian halo
+static SDL_Texture *create_sparkle_glow_texture()
+{
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, SPARKLE_GLOW_TEXTURE_SIZE, SPARKLE_GLOW_TEXTURE_SIZE, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (surface == NULL)
+        return NULL;
+    Uint32 *pixels = surface->pixels;
+    float radius = (float) SPARKLE_GLOW_TEXTURE_SIZE / 2.0f;
+    for (int y = 0; y < SPARKLE_GLOW_TEXTURE_SIZE; y++) {
+        for (int x = 0; x < SPARKLE_GLOW_TEXTURE_SIZE; x++) {
+            float dx = ((float) x + 0.5f - radius) / radius;
+            float dy = ((float) y + 0.5f - radius) / radius;
+            float d2 = dx * dx + dy * dy;
+            // Fades to zero at the edge so the square texture never shows
+            float a = d2 >= 1.0f ? 0.0f : expf(-6.0f * d2) * (1.0f - d2);
+            pixels[y * (surface->pitch / 4) + x] = SDL_MapRGBA(surface->format, 0xFF, 0xFF, 0xFF, (Uint8) (a * 255.0f + 0.5f));
+        }
+    }
+    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_FreeSurface(surface);
+    if (texture != NULL)
+        SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_ADD);
+    return texture;
+}
+
 // A function to draw the sparkles around the first (widest) ribbon
 static void draw_sparkles(float seconds, SDL_Color light)
 {
@@ -289,6 +318,7 @@ static void draw_sparkles(float seconds, SDL_Color light)
         sparkle_texture = create_sparkle_texture();
         if (sparkle_texture == NULL)
             return;
+        sparkle_glow_texture = create_sparkle_glow_texture();
     }
     if (!sparkles_ready) {
         // Stagger the first generation so they don't all appear at once
@@ -302,6 +332,8 @@ static void draw_sparkles(float seconds, SDL_Color light)
     float w = (float) geo.screen_width;
     float h = (float) geo.screen_height;
     SDL_SetTextureColorMod(sparkle_texture, light.r, light.g, light.b);
+    if (sparkle_glow_texture != NULL)
+        SDL_SetTextureColorMod(sparkle_glow_texture, light.r, light.g, light.b);
     for (int i = 0; i < NUM_SPARKLES; i++) {
         Sparkle *sparkle = &sparkles[i];
         float age = seconds - sparkle->born;
@@ -324,7 +356,16 @@ static void draw_sparkles(float seconds, SDL_Color light)
         float y = ribbon_center(&ribbons[0], u, seconds, NULL) +
                   h * (sparkle->offset + 0.01f * sinf(sparkle->bob_speed * age + sparkle->bob_phase));
         float size = fmaxf(h * sparkle->size, 3.0f);
-        SDL_FRect rect = {w * u - size / 2.0f, y - size / 2.0f, size, size};
+        float x = w * u;
+
+        // The glow blooms with the speck as it twinkles
+        if (sparkle_glow_texture != NULL) {
+            float glow_size = size * SPARKLE_GLOW_SCALE;
+            SDL_FRect glow_rect = {x - glow_size / 2.0f, y - glow_size / 2.0f, glow_size, glow_size};
+            SDL_SetTextureAlphaMod(sparkle_glow_texture, (Uint8) (alpha * SPARKLE_GLOW_OPACITY));
+            SDL_RenderCopyF(renderer, sparkle_glow_texture, NULL, &glow_rect);
+        }
+        SDL_FRect rect = {x - size / 2.0f, y - size / 2.0f, size, size};
         SDL_SetTextureAlphaMod(sparkle_texture, (Uint8) alpha);
         SDL_RenderCopyF(renderer, sparkle_texture, NULL, &rect);
     }
@@ -336,6 +377,9 @@ void quit_wave_background()
     if (sparkle_texture != NULL)
         SDL_DestroyTexture(sparkle_texture);
     sparkle_texture = NULL;
+    if (sparkle_glow_texture != NULL)
+        SDL_DestroyTexture(sparkle_glow_texture);
+    sparkle_glow_texture = NULL;
 }
 
 // A function to draw the wave background for the current frame
