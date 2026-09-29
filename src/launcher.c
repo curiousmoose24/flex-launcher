@@ -43,6 +43,8 @@ static void draw_carousel_buttons(void);
 static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha);
 static SDL_Texture *entry_icon(Entry *entry, bool selected);
 static void draw_title_glow(Entry *entry, const SDL_Rect *text_rect, float strength);
+static void load_picture_background(void);
+static void toggle_background(void);
 static bool column_active(void);
 static void update_column(void);
 static float column_offset(void);
@@ -391,8 +393,7 @@ static void cleanup()
     IMG_Quit();
     TTF_Quit();
     quit_svg();
-    if (config.background_mode == BACKGROUND_SLIDESHOW)
-        quit_slideshow();
+    quit_slideshow();
 
     // Close log file if open
     if (log_file != NULL)
@@ -710,12 +711,17 @@ static void carousel_move(Direction direction)
     carousel_anim_start = ticks.main;
 }
 
-// Get the icon to draw for an entry: the "off" icon of a :togglesounds entry while sounds
-// are off, otherwise the selected icon if available
+// Get the icon to draw for an entry: the "off" icon of a toggle entry while its setting is off
+// (:togglesounds while sounds are off, :togglebackground while the Wave background is off),
+// otherwise the selected icon if available
 static SDL_Texture *entry_icon(Entry *entry, bool selected)
 {
-    if (entry->icon_off != NULL && !config.sounds_enabled)
-        return entry->icon_off;
+    if (entry->icon_off != NULL) {
+        bool off = !strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS) ? !config.sounds_enabled :
+                   config.background_mode != BACKGROUND_WAVE;
+        if (off)
+            return entry->icon_off;
+    }
     if (selected && entry->icon_selected != NULL)
         return entry->icon_selected;
     return entry->icon;
@@ -1060,7 +1066,7 @@ static void render_buttons(Menu *menu)
         entry->icon = load_texture_from_file(entry->icon_path);
         entry->icon_selected = (entry->icon_selected_path != NULL) ? load_texture_from_file(entry->icon_selected_path) : NULL;
         entry->icon_off = NULL;
-        if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS)) {
+        if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS) || !strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND)) {
             char *off_path = suffixed_path(entry->icon_path, OFF_SUFFIX);
             if (off_path != NULL) {
                 entry->icon_off = load_texture_from_file(off_path);
@@ -1355,6 +1361,8 @@ static void execute_command(const char *command)
         }
         else if (!strcmp(special_command, SCMD_TOGGLE_SOUNDS))
             toggle_sounds();
+        else if (!strcmp(special_command, SCMD_TOGGLE_BACKGROUND))
+            toggle_background();
         else if (!strcmp(special_command, SCMD_HOME))
             load_menu(default_menu, false, true);
         else if (!strcmp(special_command, SCMD_BACK))
@@ -1722,6 +1730,79 @@ void print_version(FILE *stream)
     fprintf(stream, "  SDL_ttf   %u.%u.%u" endline, ttf_version->major, ttf_version->minor, ttf_version->patch);
 }
 
+// The picture background (Image or Slideshow) that :togglebackground switches to from Wave
+static ModeBackground picture_mode = BACKGROUND_COLOR;
+static bool picture_loaded = false;
+
+// A function to load the Image or Slideshow background
+static void load_picture_background()
+{
+    picture_loaded = true;
+    if (config.background_mode == BACKGROUND_IMAGE) {
+        if (config.background_image == NULL)
+            log_error("Background 'Image' setting not specified in config file");
+        else if (is_web_image(config.background_image))
+            init_web_background();
+        else {
+            SDL_Surface *surface = IMG_Load(config.background_image);
+            if (surface == NULL)
+                log_error("Could not load image %s\n%s", config.background_image, IMG_GetError());
+            background_texture = load_texture(apply_background_filters(surface));
+        }
+
+        // Switch to color mode if loading background image failed (a URL image shows the
+        // background color until its first download finishes)
+        if (background_texture == NULL && !is_web_image(config.background_image)) {
+            config.background_mode = BACKGROUND_COLOR;
+            log_error("Couldn't load background image, defaulting to color background");
+            set_draw_color();
+        }
+    }
+
+    // Render first slideshow image
+    else if (config.background_mode == BACKGROUND_SLIDESHOW) {
+        if (slideshow == NULL)
+            init_slideshow();
+        if (config.background_mode == BACKGROUND_SLIDESHOW) {
+            SDL_Surface *surface = load_next_slideshow_background(slideshow, false);
+            background_texture = load_texture(surface);
+            ticks.slideshow_load = ticks.main;
+        }
+    }
+}
+
+// A function to switch between the Wave background and the picture background,
+// and save the choice to the config file
+static void toggle_background()
+{
+    if (config.background_mode == BACKGROUND_WAVE) {
+        if (picture_mode == BACKGROUND_COLOR) {
+            log_error("No background Image or SlideshowDirectory set to switch to");
+            return;
+        }
+        config.background_mode = picture_mode;
+        if (!picture_loaded)
+            load_picture_background();
+    }
+    else if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW) {
+        if (!wave_background_supported()) {
+            log_error("The Wave background needs SDL 2.0.18 or newer");
+            return;
+        }
+        config.background_mode = BACKGROUND_WAVE;
+    }
+    else
+        return;
+    set_draw_color();
+    start_fade_in();
+    log_debug("Background mode: %s", get_mode_setting(MODE_SETTING_BACKGROUND, config.background_mode));
+
+    if (config.config_file_path != NULL &&
+    !save_config_setting(config.config_file_path, "Background", SETTING_BACKGROUND_MODE,
+        get_mode_setting(MODE_SETTING_BACKGROUND, config.background_mode)))
+        log_error("Could not save the background setting to the config file");
+}
+
 int main(int argc, char *argv[]) 
 {
     int error;
@@ -1748,6 +1829,14 @@ int main(int argc, char *argv[])
     init_sdl_ttf();
     validate_settings(&geo);
     
+    // Remember the picture background that :togglebackground switches to from the Wave background
+    if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW)
+        picture_mode = config.background_mode;
+    else if (config.background_image != NULL)
+        picture_mode = BACKGROUND_IMAGE;
+    else if (config.slideshow_directory != NULL)
+        picture_mode = BACKGROUND_SLIDESHOW;
+
     // Initialize slideshow
     if (config.background_mode == BACKGROUND_SLIDESHOW)
         init_slideshow();
@@ -1780,32 +1869,8 @@ int main(int argc, char *argv[])
     }
 
     // Render background
-    if (config.background_mode == BACKGROUND_IMAGE) {
-        if (config.background_image == NULL)
-            log_error("Background 'Image' setting not specified in config file");
-        else if (is_web_image(config.background_image))
-            init_web_background();
-        else {
-            SDL_Surface *surface = IMG_Load(config.background_image);
-            if (surface == NULL)
-                log_error("Could not load image %s\n%s", config.background_image, IMG_GetError());
-            background_texture = load_texture(apply_background_filters(surface));
-        }
-
-        // Switch to color mode if loading background image failed (a URL image shows the
-        // background color until its first download finishes)
-        if (background_texture == NULL && !is_web_image(config.background_image)) {
-            config.background_mode = BACKGROUND_COLOR;
-            log_error("Couldn't load background image, defaulting to color background");
-            set_draw_color();
-        }
-    }
-
-    // Render first slideshow image
-    else if (config.background_mode == BACKGROUND_SLIDESHOW) {
-        SDL_Surface *surface = load_next_slideshow_background(slideshow, false);
-        background_texture = load_texture(surface);
-    }
+    if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW)
+        load_picture_background();
 
     // Initialize screensaver
     if (config.screensaver_enabled)

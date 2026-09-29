@@ -49,6 +49,7 @@
 #define SCMD_UP ":up"
 #define SCMD_DOWN ":down"
 #define SCMD_TOGGLE_SOUNDS ":togglesounds"
+#define SCMD_TOGGLE_BACKGROUND ":togglebackground"
 #define SCMD_HOME ":home"
 #define SCMD_BACK ":back"
 #define SCMD_QUIT ":quit"
@@ -173,7 +174,7 @@ typedef struct entry {
     char           *cmd;
     SDL_Texture    *icon;
     SDL_Texture    *icon_selected;
-    SDL_Texture    *icon_off; // Shown instead of the icon while sounds are off (:togglesounds entries)
+    SDL_Texture    *icon_off; // Toggle entries: shown while sounds are off, or while the Wave background is off
     SDL_Rect       icon_rect;
     SDL_Texture    *title_texture;
     SDL_Texture    *title_glow; // Blurred copy of the title, drawn behind it when selected
