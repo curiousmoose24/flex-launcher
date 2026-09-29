@@ -217,6 +217,7 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define NUM_SPARKLES 150
 #define SPARKLE_FADE_TIME 0.4f      // Seconds to fade in and out (at most)
 #define SPARKLE_ZOOM_CHANCE 0.10f   // Fraction of sparkles that speed up and whoosh away
+#define SPARKLE_LEAVE_CHANCE 0.2f   // Fraction of zooming sparkles that keep going until they leave the screen
 #define SPARKLE_SPEED 0.25f        // Scales all sparkle motion
 #define SPARKLE_BLUR_TIME 0.035f    // A moving sparkle's streak shows where it was this long ago
 #define SPARKLE_TEXTURE_SIZE 32
@@ -237,6 +238,7 @@ typedef struct {
     float twinkle_speed; // Radians per second
     float twinkle_phase;
     bool zoom;
+    bool leaves;         // A zooming sparkle that doesn't fade, and flies off the screen
 } Sparkle;
 
 static Sparkle sparkles[NUM_SPARKLES];
@@ -262,7 +264,9 @@ static void spawn_sparkle(Sparkle *sparkle, float seconds)
 
     // Most live about a second; a few linger up to three
     float r = random_float(0.0f, 1.0f);
-    sparkle->life = sparkle->zoom ? random_float(1.5f, 3.0f) : 0.5f + 2.5f * r * r;
+    sparkle->leaves = sparkle->zoom && random_float(0.0f, 1.0f) < SPARKLE_LEAVE_CHANCE;
+    sparkle->life = sparkle->leaves ? 60.0f : // Reborn when it leaves the screen
+                    sparkle->zoom ? random_float(1.5f, 3.0f) : 0.5f + 2.5f * r * r;
 
     // Born near the ribbons, clustered around their center
     sparkle->x = random_float(-0.02f, 1.02f);
@@ -411,7 +415,7 @@ static void draw_sparkles(float seconds, SDL_Color light)
         // Stagger the first generation so they don't all appear at once
         for (int i = 0; i < NUM_SPARKLES; i++) {
             spawn_sparkle(&sparkles[i], seconds);
-            sparkles[i].born -= random_float(0.0f, sparkles[i].life);
+            sparkles[i].born -= random_float(0.0f, fminf(sparkles[i].life, 3.0f));
         }
         sparkles_ready = true;
     }
@@ -438,10 +442,13 @@ static void draw_sparkles(float seconds, SDL_Color light)
         }
 
         // Fade in and out at the ends of its life. A zooming sparkle fades out
-        // over the second half of its life, so it dims as it speeds away.
+        // over the second half of its life, so it dims as it speeds away, unless
+        // it's one that leaves the screen.
         float fade = fminf(SPARKLE_FADE_TIME, sparkle->life * 0.3f);
         float envelope = fminf(age / fade, 1.0f);
-        if (sparkle->zoom)
+        if (sparkle->leaves)
+            ; // Stays bright until it's off the screen
+        else if (sparkle->zoom)
             envelope = fminf(envelope, 2.0f * (1.0f - age / sparkle->life));
         else
             envelope = fminf(envelope, (sparkle->life - age) / fade);
