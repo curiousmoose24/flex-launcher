@@ -17,7 +17,10 @@ extern Geometry geo;
 // glowing ribbons and thin strands of light drifting across the screen.
 // The shapes are drawn with SDL_RenderGeometry, which needs SDL 2.0.18.
 
-#define WAVE_SEGMENTS 96
+#define MIN_WAVE_SEGMENTS 96
+#define MAX_WAVE_SEGMENTS 512
+#define WAVE_SEGMENT_WIDTH 10.0f  // Pixels per segment, so curves stay smooth on large screens
+#define MIN_RIBBON_HALF 1.5f      // Pixels; thinner bands break up and shimmer, so they dim instead
 #define PI_F 3.14159265f
 
 // Base colors for each month when WaveColor=Auto (January first)
@@ -151,37 +154,49 @@ static void draw_gradient(SDL_Color top, SDL_Color bottom)
 // A function to draw a ribbon as three rows of vertices (transparent edges, bright center)
 static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 {
-    SDL_Vertex vertices[(WAVE_SEGMENTS + 1) * 3];
-    int indices[WAVE_SEGMENTS * 12];
+    static SDL_Vertex vertices[(MAX_WAVE_SEGMENTS + 1) * 3];
+    static int indices[MAX_WAVE_SEGMENTS * 12];
     float w = (float) geo.screen_width;
     float h = (float) geo.screen_height;
+    int segments = (int) (w / WAVE_SEGMENT_WIDTH);
+    if (segments < MIN_WAVE_SEGMENTS)
+        segments = MIN_WAVE_SEGMENTS;
+    else if (segments > MAX_WAVE_SEGMENTS)
+        segments = MAX_WAVE_SEGMENTS;
     SDL_Color edge = color;
     edge.a = 0;
     SDL_Color center = color;
-    center.a = ribbon->alpha;
 
-    for (int i = 0; i <= WAVE_SEGMENTS; i++) {
-        float u = (float) i / (float) WAVE_SEGMENTS;
+    for (int i = 0; i <= segments; i++) {
+        float u = (float) i / (float) segments;
         float angle = 2.0f * PI_F * ribbon->frequency * u + ribbon->speed * seconds + ribbon->phase;
         float y = h * (ribbon->base_y + ribbon->amplitude * sinf(angle) +
                   0.3f * ribbon->amplitude * sinf(2.3f * angle + 0.7f * seconds));
 
         // The band twists: its thickness varies along the wave
         float half = h * ribbon->thickness * (0.55f + 0.45f * sinf(1.7f * angle - 0.4f * seconds));
+
+        // Keep the band at least a few pixels wide, dimming it by as much as it was widened
+        float alpha = (float) ribbon->alpha;
+        if (half < MIN_RIBBON_HALF) {
+            alpha *= half / MIN_RIBBON_HALF;
+            half = MIN_RIBBON_HALF;
+        }
+        center.a = (Uint8) (alpha + 0.5f);
         float x = w * u;
         vertices[i * 3] = (SDL_Vertex) {{x, y - half}, edge, {0.0f, 0.0f}};
         vertices[i * 3 + 1] = (SDL_Vertex) {{x, y}, center, {0.0f, 0.0f}};
         vertices[i * 3 + 2] = (SDL_Vertex) {{x, y + half}, edge, {0.0f, 0.0f}};
     }
     int n = 0;
-    for (int i = 0; i < WAVE_SEGMENTS; i++) {
+    for (int i = 0; i < segments; i++) {
         for (int row = 0; row < 2; row++) {
             int a = i * 3 + row, b = a + 1, c = a + 3, d = a + 4;
             indices[n++] = a; indices[n++] = c; indices[n++] = b;
             indices[n++] = b; indices[n++] = c; indices[n++] = d;
         }
     }
-    SDL_RenderGeometry(renderer, NULL, vertices, (WAVE_SEGMENTS + 1) * 3, indices, n);
+    SDL_RenderGeometry(renderer, NULL, vertices, (segments + 1) * 3, indices, n);
 }
 #endif
 
