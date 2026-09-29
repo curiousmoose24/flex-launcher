@@ -252,7 +252,7 @@ When `Mode` is set to "Wave", this setting makes the background dimmer at night 
 Default: true
 
 ##### WaveSparkles
-If set to `true`, soft specks of light drift along the [Wave](#mode) background's ribbons and twinkle in and out, like the particles of the PlayStation 3 slim's XMB. Most sparkles stay near the ribbons, and each fades out after a few seconds while a new one appears elsewhere. This setting is a boolean "true" or "false".
+If set to `true`, soft specks of light scattered around the [Wave](#mode) background's ribbons drift, twinkle and fade, like the particles of the PlayStation 3 slim's XMB. They are born near the ribbons but move on their own, mostly drifting slowly sideways and living only a second or two, while some speed up and whoosh away. This setting is a boolean "true" or "false".
 
 Default: true
 

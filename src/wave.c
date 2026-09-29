@@ -209,37 +209,33 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 }
 #endif
 
-// Sparkles: soft specks of light that drift along the ribbons and twinkle in and out,
-// like the particles around the PS3 slim's XMB wave. Each lives from one to a dozen
-// seconds and is then reborn somewhere else. Some break away from the wave after a
-// while and zoom off the screen, trailing light. Positions are worked out from the
-// birth time, so there's no per-frame state.
-#define NUM_SPARKLES 140
-#define SPARKLE_FADE_TIME 0.8f     // Seconds to fade in and out (at most)
-#define SPARKLE_ZOOM_CHANCE 0.15f  // Fraction of sparkles that zoom off the screen
-#define SPARKLE_TRAIL_TIME 0.12f   // A zooming sparkle's streak reaches back this many seconds
+// Sparkles: soft specks of light scattered around the ribbons that drift, twinkle and fade,
+// modeled on the particles of the PS3 slim's XMB (measured from a recording). They are born
+// near the ribbons but move on their own: most drift slowly sideways, more often right than
+// left, and live only a second or two. Some speed up smoothly and whoosh away, fading out or
+// leaving the screen. Positions are worked out from the birth time, so there's no per-frame state.
+#define NUM_SPARKLES 150
+#define SPARKLE_FADE_TIME 0.4f      // Seconds to fade in and out (at most)
+#define SPARKLE_ZOOM_CHANCE 0.10f   // Fraction of sparkles that speed up and whoosh away
+#define SPARKLE_BLUR_TIME 0.035f    // A moving sparkle's streak shows where it was this long ago
 #define SPARKLE_TEXTURE_SIZE 32
 #define SPARKLE_GLOW_TEXTURE_SIZE 64
-#define SPARKLE_GLOW_SCALE 5.0f    // Glow diameter relative to the speck
+#define SPARKLE_GLOW_SCALE 5.0f     // Glow diameter relative to the speck
 #define SPARKLE_GLOW_OPACITY 0.225f // Glow brightness relative to the speck
 
 typedef struct {
     float born;          // Seconds
     float life;          // Seconds
-    float u;             // Horizontal position when born, fraction of screen width
-    float drift;         // Screen widths per second
-    float offset;        // Distance from the band's center, fraction of screen height
-    float bob_speed;     // Radians per second
-    float bob_phase;
+    float x;             // Birth position, fraction of screen width
+    float y;             // Birth position, fraction of screen height
+    float vx;            // Screen widths per second
+    float vy;            // Screen widths per second
+    float acceleration;  // Screen widths per second squared, along the direction of motion
     float size;          // Diameter, fraction of screen height
     float brightness;    // 0-1
     float twinkle_speed; // Radians per second
     float twinkle_phase;
-    bool zoom;           // Breaks away from the wave and flies off the screen
-    float linger;        // Seconds it follows the wave before zooming
-    float direction;     // Radians
-    float speed;         // Initial zoom speed, screen widths per second
-    float acceleration;  // Screen widths per second squared
+    bool zoom;
 } Sparkle;
 
 static Sparkle sparkles[NUM_SPARKLES];
@@ -252,71 +248,77 @@ static float random_float(float min, float max)
     return min + (max - min) * (float) rand() / (float) RAND_MAX;
 }
 
+// A random number from -1 to 1 that clusters around 0
+static float random_centered()
+{
+    return (random_float(0.0f, 1.0f) + random_float(0.0f, 1.0f) + random_float(0.0f, 1.0f) - 1.5f) / 1.5f;
+}
+
 static void spawn_sparkle(Sparkle *sparkle, float seconds)
 {
-    // Squaring skews lifespans towards short: from a brief flicker to a long, slow drift
-    float r = random_float(0.0f, 1.0f);
-    sparkle->life = 1.0f + 11.0f * r * r;
     sparkle->born = seconds;
-    sparkle->u = random_float(-0.05f, 1.05f);
-    sparkle->drift = random_float(-0.008f, 0.02f);
-    // The sum of three random numbers clusters the sparkles near the band
-    sparkle->offset = (random_float(0.0f, 1.0f) + random_float(0.0f, 1.0f) + random_float(0.0f, 1.0f) - 1.5f) * 0.12f;
-    sparkle->bob_speed = random_float(0.3f, 0.9f);
-    sparkle->bob_phase = random_float(0.0f, 2.0f * PI_F);
-    sparkle->size = random_float(0.004f, 0.009f);
-    sparkle->brightness = random_float(0.5f, 1.0f);
-    sparkle->twinkle_speed = random_float(2.0f, 6.0f);
-    sparkle->twinkle_phase = random_float(0.0f, 2.0f * PI_F);
-
-    // Zooming sparkles fly mostly sideways, a little up or down, and leave when off the screen
     sparkle->zoom = random_float(0.0f, 1.0f) < SPARKLE_ZOOM_CHANCE;
-    if (sparkle->zoom) {
-        sparkle->linger = random_float(0.3f, 3.0f);
-        sparkle->direction = random_float(-0.6f, 0.6f) + (rand() % 3 == 0 ? PI_F : 0.0f);
-        sparkle->speed = random_float(0.02f, 0.08f);
-        sparkle->acceleration = random_float(0.4f, 1.2f);
-        sparkle->brightness = random_float(0.8f, 1.0f);
-        sparkle->life = sparkle->linger + 10.0f; // Normally reborn when it leaves the screen first
-    }
+
+    // Most live about a second; a few linger up to three
+    float r = random_float(0.0f, 1.0f);
+    sparkle->life = sparkle->zoom ? random_float(1.5f, 3.0f) : 0.5f + 2.5f * r * r;
+
+    // Born near the ribbons, clustered around their center
+    sparkle->x = random_float(-0.02f, 1.02f);
+    sparkle->y = ribbon_center(&ribbons[0], sparkle->x, seconds, NULL) / (float) geo.screen_height +
+                 random_centered() * 0.18f;
+
+    // Drift sideways, twice as often right as left; about a fifth barely move
+    float direction = random_float(0.0f, 1.0f) < 0.67f ? 1.0f : -1.0f;
+    float speed;
+    if (sparkle->zoom)
+        speed = random_float(0.015f, 0.04f);
+    else if (random_float(0.0f, 1.0f) < 0.2f)
+        speed = random_float(0.0f, 0.006f);
+    else
+        speed = 0.01f * expf(random_float(0.0f, 1.8f)); // 0.01-0.06, mostly slow
+    sparkle->vx = direction * speed;
+    sparkle->vy = random_centered() * 0.02f;
+    sparkle->acceleration = sparkle->zoom ? random_float(0.12f, 0.3f) : 0.0f;
+
+    sparkle->size = random_float(0.004f, 0.009f);
+    sparkle->brightness = sparkle->zoom ? random_float(0.75f, 1.0f) : random_float(0.5f, 1.0f);
+    sparkle->twinkle_speed = random_float(3.0f, 8.0f);
+    sparkle->twinkle_phase = random_float(0.0f, 2.0f * PI_F);
 }
 
 // A function to get a sparkle's position at an age, in pixels
 static void sparkle_position(const Sparkle *sparkle, float age, float *x, float *y)
 {
     float w = (float) geo.screen_width;
-    float h = (float) geo.screen_height;
-    float follow = sparkle->zoom && age > sparkle->linger ? sparkle->linger : age;
+    float dx = sparkle->vx * age;
+    float dy = sparkle->vy * age;
 
-    // Following the wave
-    float u = sparkle->u + sparkle->drift * follow;
-    *x = w * u;
-    *y = ribbon_center(&ribbons[0], u, sparkle->born + follow, NULL) +
-         h * (sparkle->offset + 0.01f * sinf(sparkle->bob_speed * follow + sparkle->bob_phase));
-
-    // Zooming away from where it left the wave, speeding up
-    if (sparkle->zoom && age > sparkle->linger) {
-        float t = age - sparkle->linger;
-        float distance = w * (sparkle->speed * t + 0.5f * sparkle->acceleration * t * t);
-        *x += distance * cosf(sparkle->direction);
-        *y += distance * sinf(sparkle->direction);
+    // Zooming sparkles speed up smoothly along their direction of motion
+    if (sparkle->acceleration > 0.0f) {
+        float speed = sqrtf(sparkle->vx * sparkle->vx + sparkle->vy * sparkle->vy);
+        float extra = 0.5f * sparkle->acceleration * age * age;
+        dx += extra * sparkle->vx / speed;
+        dy += extra * sparkle->vy / speed;
     }
+    *x = w * (sparkle->x + dx);
+    *y = (float) geo.screen_height * sparkle->y + w * dy;
 }
 
-// A function to draw a zooming sparkle's streak: a tapered wedge of light fading back along its path
+// A function to draw a moving sparkle's streak: a tapered wedge of light fading back along its path
 static void draw_streak(const Sparkle *sparkle, float age, float x, float y, float size, float alpha, SDL_Color light)
 {
 #if SDL_VERSION_ATLEAST(2, 0, 18)
     float tx, ty;
-    sparkle_position(sparkle, fmaxf(age - SPARKLE_TRAIL_TIME, sparkle->linger), &tx, &ty);
+    sparkle_position(sparkle, fmaxf(age - SPARKLE_BLUR_TIME, 0.0f), &tx, &ty);
     float dx = x - tx, dy = y - ty;
     float length = sqrtf(dx * dx + dy * dy);
-    if (length < 1.0f)
+    if (length < 2.0f * size) // Too slow to blur
         return;
     float half = size * 0.3f;
     float px = -dy / length * half, py = dx / length * half;
     SDL_Color head = light, tail = light;
-    head.a = (Uint8) (alpha * 0.6f);
+    head.a = (Uint8) (alpha * 0.45f);
     tail.a = 0;
     SDL_Vertex vertices[3] = {
         {{x + px, y + py}, head, {0.0f, 0.0f}},
@@ -428,28 +430,31 @@ static void draw_sparkles(float seconds, SDL_Color light)
         float x, y;
         sparkle_position(sparkle, age, &x, &y);
         float size = fmaxf(h * sparkle->size, 3.0f);
-        bool zooming = sparkle->zoom && age > sparkle->linger;
         float margin = size * SPARKLE_GLOW_SCALE;
-        if (zooming && (x < -margin || x > w + margin || y < -margin || y > h + margin)) {
+        if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
             sparkle->life = age; // Gone off the screen: reborn next frame
             continue;
         }
 
-        // Fade in and out at the ends of its life (a zooming sparkle leaves at full brightness)
+        // Fade in and out at the ends of its life. A zooming sparkle fades out
+        // over the second half of its life, so it dims as it speeds away.
         float fade = fminf(SPARKLE_FADE_TIME, sparkle->life * 0.3f);
-        float envelope = fminf((sparkle->zoom ? age : fminf(age, sparkle->life - age)) / fade, 1.0f);
+        float envelope = fminf(age / fade, 1.0f);
+        if (sparkle->zoom)
+            envelope = fminf(envelope, 2.0f * (1.0f - age / sparkle->life));
+        else
+            envelope = fminf(envelope, (sparkle->life - age) / fade);
+        envelope = fmaxf(fminf(envelope, 1.0f), 0.0f);
         envelope = envelope * envelope * (3.0f - 2.0f * envelope);
         // Twinkle between nearly dark and full brightness; squaring gives short, bright flashes.
-        // A zooming sparkle stops twinkling and shines steadily once it takes off.
+        // Zooming sparkles twinkle less, so they read as a steady whoosh.
         float twinkle = 0.5f + 0.5f * sinf(sparkle->twinkle_speed * age + sparkle->twinkle_phase);
-        twinkle = 0.08f + 0.92f * twinkle * twinkle;
-        if (zooming)
-            twinkle += (1.0f - twinkle) * fminf((age - sparkle->linger) / 0.2f, 1.0f);
+        twinkle = sparkle->zoom ? 0.6f + 0.4f * twinkle : 0.08f + 0.92f * twinkle * twinkle;
         float alpha = 255.0f * sparkle->brightness * envelope * twinkle;
         if (alpha < 1.0f)
             continue;
 
-        if (zooming)
+        if (sparkle->zoom)
             draw_streak(sparkle, age, x, y, size, alpha, light);
         draw_speck(x, y, size, alpha);
     }
