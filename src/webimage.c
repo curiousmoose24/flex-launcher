@@ -7,6 +7,7 @@
 #include <SDL_ttf.h>
 #ifdef __unix__
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 #ifdef HAVE_CURL
 #include <curl/curl.h>
@@ -44,6 +45,9 @@ static SDL_Surface *downloaded_surface = NULL; // Set by the download thread
 static Uint32 next_download = 0;
 static SDL_Texture *fade_texture = NULL;
 static Uint32 fade_start = 0;
+
+static void temp_cache_path(char *path, size_t size);
+static bool save_cache_file(const char *data, size_t size);
 
 bool is_web_image(const char *path)
 {
@@ -91,7 +95,40 @@ static void init_cache_path()
     snprintf(dir + length, sizeof(dir) - length, "/%s", EXECUTABLE_TITLE);
     mkdir(dir, 0755);
     snprintf(cache_path, sizeof(cache_path), "%s/wallpaper", dir);
+
+    // Remove a temporary file left behind if a previous save was interrupted
+    char tmp_path[MAX_PATH_CHARS + 8];
+    temp_cache_path(tmp_path, sizeof(tmp_path));
+    remove(tmp_path);
 #endif
+}
+
+// A function to get the path of the temporary file used while saving the cache
+static void temp_cache_path(char *path, size_t size)
+{
+    snprintf(path, size, "%s.tmp", cache_path);
+}
+
+// A function to save a downloaded image to the cache safely: the data is written to a
+// temporary file, flushed to disk, and then renamed over the cache file in one step, so an
+// interrupted write never leaves a partial image behind
+static bool save_cache_file(const char *data, size_t size)
+{
+    char tmp_path[MAX_PATH_CHARS + 8];
+    temp_cache_path(tmp_path, sizeof(tmp_path));
+    FILE *file = fopen(tmp_path, "wb");
+    if (file == NULL)
+        return false;
+    bool ok = fwrite(data, 1, size, file) == size && fflush(file) == 0;
+#ifdef __unix__
+    ok = ok && fsync(fileno(file)) == 0;
+#endif
+    ok = (fclose(file) == 0) && ok;
+    if (ok)
+        ok = rename(tmp_path, cache_path) == 0;
+    if (!ok)
+        remove(tmp_path);
+    return ok;
 }
 
 #ifdef HAVE_CURL
@@ -146,13 +183,8 @@ static int download_image(void *data)
             surface = IMG_Load_RW(SDL_RWFromConstMem(buffer.data, (int) buffer.size), 1);
             if (surface == NULL)
                 log_error("Could not decode background image %s\n%s", url, IMG_GetError());
-            else if (cache_path[0] != '\0') {
-                FILE *file = fopen(cache_path, "wb");
-                if (file != NULL) {
-                    fwrite(buffer.data, 1, buffer.size, file);
-                    fclose(file);
-                }
-            }
+            else if (cache_path[0] != '\0' && !save_cache_file(buffer.data, buffer.size))
+                log_error("Could not save background image to cache %s", cache_path);
         }
         curl_easy_cleanup(curl);
     }
