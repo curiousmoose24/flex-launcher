@@ -136,6 +136,10 @@ void debug_settings()
     log_debug("%-25s %.0f%%", SETTING_UNFOCUSED_OPACITY ":", (double) config.unfocused_alpha * 100.0 / 255.0);
     DEBUG_MODE(SETTING_SUBMENU_MODE, MODE_SETTING_SUBMENU, config.submenu_mode);
     log_debug("%-25s %.0f%%", SETTING_COLUMN_ICON_SIZE ":", (double) (config.column_icon_scale * 100.0f));
+    if (config.column_focus_scale > 0.0f)
+        log_debug("%-25s %.0f%%", SETTING_COLUMN_FOCUS_SCALE ":", (double) (config.column_focus_scale * 100.0f));
+    else
+        log_debug("%-25s %s", SETTING_COLUMN_FOCUS_SCALE ":", "Auto");
     DEBUG_INT(SETTING_ICON_SIZE, config.icon_size);
     DEBUG_INT(SETTING_ICON_SPACING, config.icon_spacing);
     DEBUG_STR(SETTING_VCENTER, config.vcenter[0] != '\0' ? config.vcenter : "50%");

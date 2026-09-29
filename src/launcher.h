@@ -315,6 +315,7 @@ typedef struct {
     SDL_Color title_glow_color; // Alpha is the glow opacity
     ModeSubmenu submenu_mode; // Column: submenus drop down vertically below their entry (carousel)
     float column_icon_scale; // Size of column icons relative to IconSize
+    float column_focus_scale; // Size of the selected column icon relative to the others (0 = automatic)
     Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
     bool wave_color_auto; // Wave background color changes by month
     SDL_Color wave_color;

@@ -207,6 +207,7 @@ The settings in this section define the geometric layout of the launcher.
 - [UnfocusedOpacity](#unfocusedopacity)
 - [SubmenuMode](#submenumode)
 - [ColumnIconSize](#columniconsize)
+- [ColumnFocusScale](#columnfocusscale)
 - [IconSize](#iconsize)
 - [IconSpacing](#iconspacing)
 - [VCenter](#vcenter)
@@ -256,6 +257,11 @@ Default: Screen
 The size of the icons in a column, in percent of [IconSize](#iconsize). Only applies when [SubmenuMode](#submenumode) is `Column`.
 
 Default: 60%
+
+##### ColumnFocusScale
+The size of the selected icon in a column, in percent of [ColumnIconSize](#columniconsize). The entries below it move down to make room. Valid range is 100%-300%. By default, the selected column icon grows by half as much as [FocusScale](#focusscale) (e.g. 125% when FocusScale is 150%). Only applies when [SubmenuMode](#submenumode) is `Column`.
+
+Default: Automatic
 
 ##### IconSize
 The width and height of icons on the screen in pixels. If an icon is not the same resolution, it will be stretched accordingly.

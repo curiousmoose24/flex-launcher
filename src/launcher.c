@@ -147,6 +147,7 @@ Config config = {
     .title_glow_color                 = {0xFF, 0xFF, 0xFF, 0x99},
     .submenu_mode                     = SUBMENU_MODE_SCREEN,
     .column_icon_scale                = 0.6f,
+    .column_focus_scale               = 0.0f,
     .fade_time                        = DEFAULT_FADE_TIME,
     .wave_color_auto                  = true,
     .wave_color                       = {0x2D, 0x6F, 0xD6, 0xFF},
@@ -886,6 +887,16 @@ static void draw_column(float category_center, float category_closeness)
                         (config.titles_enabled ? config.title_padding + geo.font_height : 0));
     float above_start = (float) (row_middle - category_half - gap - item_size);
 
+    // Size of the selected column icon (automatic: half of the row's FocusScale growth)
+    float focus_scale = config.column_focus_scale > 0.0f ? config.column_focus_scale :
+                        1.0f + (config.focus_scale - 1.0f) * 0.5f;
+    float half_growth = (focus_scale - 1.0f) * (float) item_size / 2.0f;
+
+    // Icon centers: the enlarged selected entry sits just below the row, the entries after it
+    // move down to make room for it, and the entries before it stack up above the row
+    float below_center = below_start + (float) item_size / 2.0f + half_growth;
+    float above_center = above_start + (float) item_size / 2.0f;
+
     int selected = 0;
     for (Entry *e = column_menu->first_entry; e != column_entry; e = e->next)
         selected++;
@@ -895,21 +906,21 @@ static void draw_column(float category_center, float category_closeness)
     for (Entry *entry = column_menu->first_entry; entry != NULL; entry = entry->next, i++) {
         // Position relative to the selection (fractional while scrolling)
         float f = (float) i - position;
-        float y;
+        float center_y;
         if (f >= 0.0f)
-            y = below_start + f * (float) item_advance;
+            center_y = below_center + f * (float) item_advance + fminf(f, 1.0f) * half_growth;
         else if (f <= -1.0f)
-            y = above_start + (f + 1.0f) * (float) item_advance;
+            center_y = above_center + (f + 1.0f) * (float) item_advance;
         else
-            y = below_start - f * (above_start - below_start);
-        if (y + (float) item_size < 0.0f || y > (float) geo.screen_height)
-            continue;
+            center_y = below_center - f * (above_center - below_center);
 
         float closeness = 1.0f - fminf(fabsf(f), 1.0f);
-        int size = (int) ((float) item_size * (1.0f + (config.focus_scale - 1.0f) * 0.5f * closeness) + 0.5f);
+        int size = (int) ((float) item_size * (1.0f + (focus_scale - 1.0f) * closeness) + 0.5f);
+        if (center_y + (float) size / 2.0f < 0.0f || center_y - (float) size / 2.0f > (float) geo.screen_height)
+            continue;
         SDL_Rect icon_rect = {
             .x = (int) category_center - size / 2,
-            .y = (int) y + (item_size - size) / 2,
+            .y = (int) center_y - size / 2,
             .w = size,
             .h = size
         };
