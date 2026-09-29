@@ -115,6 +115,16 @@ static const Ribbon ribbons[] = {
     {0.65f, 0.060f, 1.3f, 0.19f, 4.0f, 0.0015f, 100}
 };
 
+// A function to calculate a ribbon's center line at horizontal position u (0-1), in pixels
+static float ribbon_center(const Ribbon *ribbon, float u, float seconds, float *angle_out)
+{
+    float angle = 2.0f * PI_F * ribbon->frequency * u + ribbon->speed * seconds + ribbon->phase;
+    if (angle_out != NULL)
+        *angle_out = angle;
+    return (float) geo.screen_height * (ribbon->base_y + ribbon->amplitude * sinf(angle) +
+           0.3f * ribbon->amplitude * sinf(2.3f * angle + 0.7f * seconds));
+}
+
 // A function to calculate the brightness for the current time of day (dimmer at night)
 static float time_of_day_brightness(const struct tm *now)
 {
@@ -169,9 +179,8 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 
     for (int i = 0; i <= segments; i++) {
         float u = (float) i / (float) segments;
-        float angle = 2.0f * PI_F * ribbon->frequency * u + ribbon->speed * seconds + ribbon->phase;
-        float y = h * (ribbon->base_y + ribbon->amplitude * sinf(angle) +
-                  0.3f * ribbon->amplitude * sinf(2.3f * angle + 0.7f * seconds));
+        float angle;
+        float y = ribbon_center(ribbon, u, seconds, &angle);
 
         // The band twists: its thickness varies along the wave
         float half = h * ribbon->thickness * (0.55f + 0.45f * sinf(1.7f * angle - 0.4f * seconds));
@@ -199,6 +208,133 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
     SDL_RenderGeometry(renderer, NULL, vertices, (segments + 1) * 3, indices, n);
 }
 #endif
+
+// Sparkles: soft specks of light that drift along the ribbons and twinkle in and out,
+// like the particles around the PS3 slim's XMB wave. Each lives a few seconds and is
+// then reborn somewhere else, so there's no per-frame state beyond its birth time.
+#define NUM_SPARKLES 140
+#define SPARKLE_FADE_TIME 0.8f // Seconds to fade in and out
+#define SPARKLE_TEXTURE_SIZE 32
+
+typedef struct {
+    float born;          // Seconds
+    float life;          // Seconds
+    float u;             // Horizontal position when born, fraction of screen width
+    float drift;         // Screen widths per second
+    float offset;        // Distance from the band's center, fraction of screen height
+    float bob_speed;     // Radians per second
+    float bob_phase;
+    float size;          // Diameter, fraction of screen height
+    float brightness;    // 0-1
+    float twinkle_speed; // Radians per second
+    float twinkle_phase;
+} Sparkle;
+
+static Sparkle sparkles[NUM_SPARKLES];
+static bool sparkles_ready = false;
+static SDL_Texture *sparkle_texture = NULL;
+
+static float random_float(float min, float max)
+{
+    return min + (max - min) * (float) rand() / (float) RAND_MAX;
+}
+
+static void spawn_sparkle(Sparkle *sparkle, float seconds)
+{
+    sparkle->life = random_float(3.0f, 7.0f);
+    sparkle->born = seconds;
+    sparkle->u = random_float(-0.05f, 1.05f);
+    sparkle->drift = random_float(-0.008f, 0.02f);
+    // The sum of three random numbers clusters the sparkles near the band
+    sparkle->offset = (random_float(0.0f, 1.0f) + random_float(0.0f, 1.0f) + random_float(0.0f, 1.0f) - 1.5f) * 0.12f;
+    sparkle->bob_speed = random_float(0.3f, 0.9f);
+    sparkle->bob_phase = random_float(0.0f, 2.0f * PI_F);
+    sparkle->size = random_float(0.004f, 0.009f);
+    sparkle->brightness = random_float(0.5f, 1.0f);
+    sparkle->twinkle_speed = random_float(2.0f, 6.0f);
+    sparkle->twinkle_phase = random_float(0.0f, 2.0f * PI_F);
+}
+
+// A function to create the soft round speck texture: a bright core with a glowing falloff
+static SDL_Texture *create_sparkle_texture()
+{
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, SPARKLE_TEXTURE_SIZE, SPARKLE_TEXTURE_SIZE, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (surface == NULL)
+        return NULL;
+    Uint32 *pixels = surface->pixels;
+    float radius = (float) SPARKLE_TEXTURE_SIZE / 2.0f;
+    for (int y = 0; y < SPARKLE_TEXTURE_SIZE; y++) {
+        for (int x = 0; x < SPARKLE_TEXTURE_SIZE; x++) {
+            float dx = ((float) x + 0.5f - radius) / radius;
+            float dy = ((float) y + 0.5f - radius) / radius;
+            float d = sqrtf(dx * dx + dy * dy);
+            float glow = d >= 1.0f ? 0.0f : (1.0f - d) * (1.0f - d);
+            float core = d >= 0.45f ? 0.0f : 1.0f - d / 0.45f;
+            float a = fminf(0.55f * glow + core, 1.0f);
+            Uint8 alpha = (Uint8) (a * 255.0f + 0.5f);
+            pixels[y * (surface->pitch / 4) + x] = SDL_MapRGBA(surface->format, 0xFF, 0xFF, 0xFF, alpha);
+        }
+    }
+    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_FreeSurface(surface);
+    if (texture != NULL)
+        SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_ADD);
+    return texture;
+}
+
+// A function to draw the sparkles around the first (widest) ribbon
+static void draw_sparkles(float seconds, SDL_Color light)
+{
+    if (sparkle_texture == NULL) {
+        sparkle_texture = create_sparkle_texture();
+        if (sparkle_texture == NULL)
+            return;
+    }
+    if (!sparkles_ready) {
+        // Stagger the first generation so they don't all appear at once
+        for (int i = 0; i < NUM_SPARKLES; i++) {
+            spawn_sparkle(&sparkles[i], seconds);
+            sparkles[i].born -= random_float(0.0f, sparkles[i].life);
+        }
+        sparkles_ready = true;
+    }
+
+    float w = (float) geo.screen_width;
+    float h = (float) geo.screen_height;
+    SDL_SetTextureColorMod(sparkle_texture, light.r, light.g, light.b);
+    for (int i = 0; i < NUM_SPARKLES; i++) {
+        Sparkle *sparkle = &sparkles[i];
+        float age = seconds - sparkle->born;
+        if (age >= sparkle->life || age < 0.0f) {
+            spawn_sparkle(sparkle, seconds);
+            age = 0.0f;
+        }
+
+        // Fade in and out at the ends of its life, with a gentle twinkle
+        float envelope = fminf(fminf(age, sparkle->life - age) / SPARKLE_FADE_TIME, 1.0f);
+        envelope = envelope * envelope * (3.0f - 2.0f * envelope);
+        float twinkle = 0.75f + 0.25f * sinf(sparkle->twinkle_speed * age + sparkle->twinkle_phase);
+        float alpha = 255.0f * sparkle->brightness * envelope * twinkle;
+        if (alpha < 1.0f)
+            continue;
+
+        float u = sparkle->u + sparkle->drift * age;
+        float y = ribbon_center(&ribbons[0], u, seconds, NULL) +
+                  h * (sparkle->offset + 0.01f * sinf(sparkle->bob_speed * age + sparkle->bob_phase));
+        float size = fmaxf(h * sparkle->size, 3.0f);
+        SDL_FRect rect = {w * u - size / 2.0f, y - size / 2.0f, size, size};
+        SDL_SetTextureAlphaMod(sparkle_texture, (Uint8) alpha);
+        SDL_RenderCopyF(renderer, sparkle_texture, NULL, &rect);
+    }
+}
+
+// A function to free the sparkle texture
+void quit_wave_background()
+{
+    if (sparkle_texture != NULL)
+        SDL_DestroyTexture(sparkle_texture);
+    sparkle_texture = NULL;
+}
 
 // A function to draw the wave background for the current frame
 void draw_wave_background(Uint32 ticks)
@@ -231,6 +367,8 @@ void draw_wave_background(Uint32 ticks)
     SDL_Color light = scale_color((SDL_Color) {0xFF, 0xFF, 0xFF, 0xFF}, 0.6f + 0.4f * brightness, 0xFF);
     for (size_t i = 0; i < sizeof(ribbons) / sizeof(ribbons[0]); i++)
         draw_ribbon(&ribbons[i], seconds, light);
+    if (config.wave_sparkles)
+        draw_sparkles(seconds, light);
 
     SDL_SetRenderDrawBlendMode(renderer, mode);
 #else

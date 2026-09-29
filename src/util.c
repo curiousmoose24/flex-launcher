@@ -269,6 +269,8 @@ int config_handler(void *user, const char *section, const char *name, const char
             parse_percent_or_number(value, 0.0f, 1.0f, &config.image_opacity);
         else if (MATCH(name, SETTING_WAVE_TIME_OF_DAY))
             convert_bool(value, &config.wave_time_of_day);
+        else if (MATCH(name, SETTING_WAVE_SPARKLES))
+            convert_bool(value, &config.wave_sparkles);
         else if (MATCH(name, SETTING_BACKGROUND_IMAGE)) {
             config.background_image = strdup(value);
             clean_path(config.background_image);

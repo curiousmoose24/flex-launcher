@@ -339,6 +339,7 @@ typedef struct {
     float image_saturation; // 1.0 = unchanged
     float image_opacity; // Opacity of the image over the background color, 1.0 = opaque
     SDL_Color wave_color;
+    bool wave_sparkles; // Twinkling specks of light drifting around the wave ribbons
     bool wave_time_of_day; // Wave background brightness follows the time of day
     bool sounds_enabled;
     int sound_volume; // 0 to SDL_MIX_MAXVOLUME

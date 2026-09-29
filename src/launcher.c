@@ -164,6 +164,7 @@ Config config = {
     .image_opacity                    = 1.0f,
     .wave_color                       = {0x2D, 0x6F, 0xD6, 0xFF},
     .wave_time_of_day                 = DEFAULT_WAVE_TIME_OF_DAY,
+    .wave_sparkles                    = DEFAULT_WAVE_SPARKLES,
     .sounds_enabled                   = DEFAULT_SOUNDS_ENABLED,
     .sound_volume                     = SDL_MIX_MAXVOLUME / 2,
     .sound_paths                      = {NULL},
@@ -379,6 +380,7 @@ static void cleanup()
     // Wait until all threads have completed
     quit_web_background();
     quit_layout_popup();
+    quit_wave_background();
     SDL_WaitThread(Slideshowhread, NULL);
     SDL_WaitThread(clock_thread, NULL);
     
