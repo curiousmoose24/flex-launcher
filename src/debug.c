@@ -151,6 +151,8 @@ void debug_settings()
     DEBUG_MODE(SETTING_TITLE_OVERSIZE_MODE, MODE_SETTING_OVERSIZE, config.title_oversize_mode);
     DEBUG_INT(SETTING_TITLE_PADDING, config.title_padding);
     DEBUG_BOOL(SETTING_TITLE_FOCUSED_ONLY, config.titles_focused_only);
+    DEBUG_BOOL(SETTING_TITLE_GLOW, config.title_glow);
+    DEBUG_COLOR(SETTING_TITLE_GLOW_COLOR, config.title_glow_color);
     log_debug("");
 
     log_debug("====================== Highlight =======================\n");

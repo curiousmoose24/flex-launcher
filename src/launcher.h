@@ -170,6 +170,8 @@ typedef struct entry {
     SDL_Texture    *icon_off; // Shown instead of the icon while sounds are off (:togglesounds entries)
     SDL_Rect       icon_rect;
     SDL_Texture    *title_texture;
+    SDL_Texture    *title_glow; // Blurred copy of the title, drawn behind it when selected
+    int            title_glow_padding; // Extra space around the title in the glow texture
     SDL_Rect       text_rect;
     int            title_offset;
     struct entry   *next;
@@ -309,6 +311,8 @@ typedef struct {
     float focus_position; // Horizontal center of the focused icon, fraction of screen width (carousel)
     Uint8 unfocused_alpha; // Opacity of icons away from focus (carousel)
     bool titles_focused_only;
+    bool title_glow; // Soft glow around the title of the selected entry
+    SDL_Color title_glow_color; // Alpha is the glow opacity
     ModeSubmenu submenu_mode; // Column: submenus drop down vertically below their entry (carousel)
     float column_icon_scale; // Size of column icons relative to IconSize
     Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)

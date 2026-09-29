@@ -283,6 +283,18 @@ int config_handler(void *user, const char *section, const char *name, const char
             parse_mode_setting(MODE_SETTING_OVERSIZE, value, (int*) &config.title_oversize_mode);
         else if (MATCH(name, SETTING_TITLE_FOCUSED_ONLY))
             convert_bool(value, &config.titles_focused_only);
+        else if (MATCH(name, SETTING_TITLE_GLOW))
+            convert_bool(value, &config.title_glow);
+        else if (MATCH(name, SETTING_TITLE_GLOW_COLOR)) {
+            Uint8 alpha = config.title_glow_color.a;
+            if (hex_to_color(value, &config.title_glow_color))
+                config.title_glow_color.a = alpha;
+        }
+        else if (MATCH(name, SETTING_TITLE_GLOW_OPACITY)) {
+            float opacity;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &opacity))
+                config.title_glow_color.a = (Uint8) (opacity * 255.0f + 0.5f);
+        }
         else if (MATCH(name, SETTING_TITLE_PADDING)) {
             int title_padding = atoi(value);
             if (title_padding >= 0)

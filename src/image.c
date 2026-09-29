@@ -382,6 +382,81 @@ SDL_Texture *render_text_texture(const char *text, TextInfo *info, SDL_Rect *rec
     return load_texture(surface);
 }
 
+// A function for one horizontal or vertical box blur pass over a float buffer
+static void box_blur(const float *in, float *out, int w, int h, int radius, bool horizontal)
+{
+    int lines = horizontal ? h : w;
+    int length = horizontal ? w : h;
+    int step = horizontal ? 1 : w;
+    float scale = 1.0f / (float) (2 * radius + 1);
+    for (int line = 0; line < lines; line++) {
+        const float *src = in + (horizontal ? line * w : line);
+        float *dst = out + (horizontal ? line * w : line);
+        float sum = 0.0f;
+        for (int i = -radius; i <= radius; i++)
+            if (i >= 0 && i < length)
+                sum += src[i * step];
+        for (int i = 0; i < length; i++) {
+            dst[i * step] = sum * scale;
+            int remove = i - radius, add = i + radius + 1;
+            if (remove >= 0)
+                sum -= src[remove * step];
+            if (add < length)
+                sum += src[add * step];
+        }
+    }
+}
+
+// A function to create a soft glow texture from rendered text: the text's shape, blurred
+// and tinted with the glow color. The texture is larger than the text by *padding on each side.
+SDL_Texture *render_glow_texture(SDL_Surface *text, SDL_Color color, int *padding)
+{
+    SDL_Surface *source = SDL_ConvertSurfaceFormat(text, SDL_PIXELFORMAT_ARGB8888, 0);
+    if (source == NULL)
+        return NULL;
+
+    int radius = source->h / 8 > 2 ? source->h / 8 : 2;
+    int pad = radius * 3;
+    int w = source->w + 2 * pad;
+    int h = source->h + 2 * pad;
+    float *alpha = calloc((size_t) (w * h), sizeof(float));
+    float *tmp = calloc((size_t) (w * h), sizeof(float));
+
+    SDL_LockSurface(source);
+    for (int y = 0; y < source->h; y++) {
+        const Uint32 *row = (const Uint32*) ((const Uint8*) source->pixels + y * source->pitch);
+        for (int x = 0; x < source->w; x++)
+            alpha[(y + pad) * w + x + pad] = (float) (row[x] >> 24) / 255.0f;
+    }
+    SDL_UnlockSurface(source);
+    SDL_FreeSurface(source);
+
+    // Three box blur passes approximate a Gaussian blur
+    for (int pass = 0; pass < 3; pass++) {
+        box_blur(alpha, tmp, w, h, radius, true);
+        box_blur(tmp, alpha, w, h, radius, false);
+    }
+
+    SDL_Surface *glow = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (glow != NULL) {
+        SDL_LockSurface(glow);
+        for (int y = 0; y < h; y++) {
+            Uint32 *row = (Uint32*) ((Uint8*) glow->pixels + y * glow->pitch);
+            for (int x = 0; x < w; x++) {
+                // Boost the blurred alpha so the glow stays visible away from the letters
+                float a = alpha[y * w + x] * 2.5f;
+                Uint32 a8 = (Uint32) ((a > 1.0f ? 1.0f : a) * 255.0f + 0.5f);
+                row[x] = (a8 << 24) | ((Uint32) color.r << 16) | ((Uint32) color.g << 8) | (Uint32) color.b;
+            }
+        }
+        SDL_UnlockSurface(glow);
+    }
+    free(alpha);
+    free(tmp);
+    *padding = pad;
+    return load_texture(glow);
+}
+
 // A function to load a font from a file
 int load_font(TextInfo *info, const char *default_font)
 {

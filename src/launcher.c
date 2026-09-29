@@ -41,6 +41,7 @@ static void carousel_move(Direction direction);
 static void draw_carousel_buttons(void);
 static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha);
 static SDL_Texture *entry_icon(Entry *entry, bool selected);
+static void draw_title_glow(Entry *entry, const SDL_Rect *text_rect, float strength);
 static bool column_active(void);
 static void update_column(void);
 static float column_offset(void);
@@ -142,6 +143,8 @@ Config config = {
     .focus_position                   = 0.5f,
     .unfocused_alpha                  = 0xFF,
     .titles_focused_only              = DEFAULT_TITLE_FOCUSED_ONLY,
+    .title_glow                       = DEFAULT_TITLE_GLOW,
+    .title_glow_color                 = {0xFF, 0xFF, 0xFF, 0x99},
     .submenu_mode                     = SUBMENU_MODE_SCREEN,
     .column_icon_scale                = 0.6f,
     .fade_time                        = DEFAULT_FADE_TIME,
@@ -710,6 +713,22 @@ static SDL_Texture *entry_icon(Entry *entry, bool selected)
     return entry->icon;
 }
 
+// Draw the glow behind a title; strength (0-1) scales the configured glow opacity
+static void draw_title_glow(Entry *entry, const SDL_Rect *text_rect, float strength)
+{
+    if (entry->title_glow == NULL || strength <= 0.0f)
+        return;
+    int w, h;
+    SDL_QueryTexture(entry->title_glow, NULL, NULL, &w, &h);
+    SDL_Rect glow_rect = {
+        .x = text_rect->x - entry->title_glow_padding,
+        .y = text_rect->y - entry->title_glow_padding,
+        .w = w,
+        .h = h
+    };
+    render_copy_alpha(entry->title_glow, &glow_rect, (Uint8) ((float) config.title_glow_color.a * fminf(strength, 1.0f) + 0.5f));
+}
+
 // Draw a texture with a temporary opacity
 static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha)
 {
@@ -779,6 +798,8 @@ static void draw_carousel_buttons()
             SDL_Rect text_rect = entry->text_rect;
             text_rect.x = (int) center - text_rect.w / 2;
             text_rect.y = icon_rect.y + size + entry->title_offset + config.title_padding;
+            if (entry == current_entry && !column_active())
+                draw_title_glow(entry, &text_rect, closeness);
             render_copy_alpha(entry->title_texture, &text_rect, title_alpha);
         }
     }
@@ -901,6 +922,7 @@ static void draw_column(float category_center, float category_closeness)
             SDL_Rect text_rect = entry->text_rect;
             text_rect.x = icon_rect.x + size + gap;
             text_rect.y = icon_rect.y + (size - text_rect.h) / 2;
+            draw_title_glow(entry, &text_rect, closeness * category_closeness);
             render_copy_alpha(entry->title_texture, &text_rect, alpha);
         }
     }
@@ -1028,7 +1050,11 @@ static void render_buttons(Menu *menu)
             }
         }
         if (config.titles_enabled) {
-            entry->title_texture = render_text_texture(entry->title, &title_info, &entry->text_rect, &h);
+            SDL_Surface *title_surface = render_text(entry->title, &title_info, &entry->text_rect, &h);
+            entry->title_glow = NULL;
+            if (config.title_glow && title_surface != NULL)
+                entry->title_glow = render_glow_texture(title_surface, config.title_glow_color, &entry->title_glow_padding);
+            entry->title_texture = load_texture(title_surface);
             if (config.title_oversize_mode == OVERSIZE_SHRINK && h != geo.font_height)
                 entry->title_offset = (geo.font_height - h) / 2;
         }
@@ -1239,8 +1265,11 @@ static void draw_screen()
         for (int i = 0; !carousel_active() && i < geo.num_buttons; i++) {
             icon = entry_icon(entry, i == (int) current_menu->highlight_position);
             SDL_RenderCopy(renderer, icon, NULL, &entry->icon_rect);
-            if (config.titles_enabled && (!config.titles_focused_only || i == (int) current_menu->highlight_position))
+            if (config.titles_enabled && (!config.titles_focused_only || i == (int) current_menu->highlight_position)) {
+                if (i == (int) current_menu->highlight_position)
+                    draw_title_glow(entry, &entry->text_rect, 1.0f);
                 SDL_RenderCopy(renderer, entry->title_texture, NULL, &entry->text_rect);
+            }
             entry = entry-> next;
         }
 

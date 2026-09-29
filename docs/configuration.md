@@ -285,6 +285,9 @@ The settings in this section affect the application titles that display below th
 - [OversizeMode](#oversizemode)
 - [Padding](#padding)
 - [FocusedOnly](#focusedonly)
+- [Glow](#glow)
+- [GlowColor](#glowcolor)
+- [GlowOpacity](#glowopacity)
 
 ##### Enabled
 Defines whether or not application titles are enabled. This setting is a boolean "true" or "false".
@@ -338,6 +341,21 @@ Default: 20
 If set to `true`, only the title of the selected entry is shown. In `Carousel` [ScrollMode](#scrollmode), the title fades in and out as entries scroll into and out of focus.
 
 Default: false
+
+##### Glow
+If set to `true`, a soft glow is drawn around the title of the highlighted entry. In `Column` [SubmenuMode](#submenumode), the highlighted column entry's title glows. The glow fades in and out with the focus animation. This setting is a boolean "true" or "false".
+
+Default: false
+
+##### GlowColor
+The color of the title glow, in hex format.
+
+Default: #FFFFFF
+
+##### GlowOpacity
+The opacity of the title glow, in percent.
+
+Default: 60%
 
 #### Highlight
 The settings in this section control the menu highlight.
