@@ -11,6 +11,7 @@
 #include <launcher_config.h>
 #include "util.h"
 #include "debug.h"
+#include "layouts.h"
 #include "platform/platform.h"
 #include <ini.h>
 
@@ -188,6 +189,13 @@ int config_handler(void *user, const char *section, const char *name, const char
             parse_percent_fraction(value, 1.0f, 3.0f, &config.focus_scale);
         else if (MATCH(name, SETTING_FOCUS_POSITION))
             parse_percent_fraction(value, 0.0f, 1.0f, &config.focus_position);
+        else if (MATCH(name, SETTING_LAYOUT_SCHEME)) {
+            int layout = find_layout(value);
+            if (layout >= 0)
+                config.layout_scheme = layout;
+            else
+                log_error("Unknown layout scheme %s", value);
+        }
         else if (MATCH(name, SETTING_SUBMENU_MODE))
             parse_mode_setting(MODE_SETTING_SUBMENU, value, (int*) &config.submenu_mode);
         else if (MATCH(name, SETTING_COLUMN_ICON_SIZE))

@@ -15,6 +15,7 @@
 #include "sound.h"
 #include "wave.h"
 #include "webimage.h"
+#include "layouts.h"
 #include "util.h"
 #include "debug.h"
 #include "clock.h"
@@ -149,6 +150,7 @@ Config config = {
     .title_glow                       = DEFAULT_TITLE_GLOW,
     .title_glow_color                 = {0xFF, 0xFF, 0xFF, 0x99},
     .submenu_mode                     = SUBMENU_MODE_SCREEN,
+    .layout_scheme                    = 0,
     .column_icon_scale                = 0.6f,
     .column_focus_scale               = 0.0f,
     .fade_time                        = DEFAULT_FADE_TIME,
@@ -376,6 +378,7 @@ static void cleanup()
 {
     // Wait until all threads have completed
     quit_web_background();
+    quit_layout_popup();
     SDL_WaitThread(Slideshowhread, NULL);
     SDL_WaitThread(clock_thread, NULL);
     
@@ -468,6 +471,19 @@ static void handle_keypress(SDL_Keysym *key)
 {
     if (config.debug)
         log_debug("Key %s (#%X) detected", SDL_GetKeyName(key->sym), key->sym);
+
+    // The layout popup takes all input while it is open
+    if (layout_popup_active()) {
+        if (key->sym == SDLK_UP)
+            layout_popup_command(SCMD_UP);
+        else if (key->sym == SDLK_DOWN)
+            layout_popup_command(SCMD_DOWN);
+        else if (key->sym == SDLK_RETURN)
+            layout_popup_command(SCMD_SELECT);
+        else if (key->sym == SDLK_BACKSPACE || key->sym == SDLK_ESCAPE || key->sym == SDLK_LEFT)
+            layout_popup_command(SCMD_BACK);
+        return;
+    }
 
     // Check default keys
     if (key->sym == SDLK_LEFT)
@@ -1304,6 +1320,9 @@ static void draw_screen()
             entry = entry-> next;
         }
 
+        // Draw the layout popup over the menu
+        draw_layout_popup();
+
         // Draw screensaver
         if (state.screensaver_active)
             SDL_RenderCopy(renderer, screensaver->texture, NULL, NULL);
@@ -1336,6 +1355,13 @@ static void execute_command(const char *command)
 {
     // Copy command into separate buffer
     char *cmd = strdup(command);
+
+    // The layout popup takes all input while it is open (e.g. from the gamepad)
+    if (layout_popup_active()) {
+        layout_popup_command(strtok(cmd, " "));
+        free(cmd);
+        return;
+    }
 
     // Parse special commands
     if (cmd[0] == ':') {
@@ -1373,6 +1399,8 @@ static void execute_command(const char *command)
             if (config.background_mode == BACKGROUND_WAVE && is_web_image(config.background_image))
                 toggle_background();
         }
+        else if (!strcmp(special_command, SCMD_LAYOUTS))
+            open_layout_popup();
         else if (!strcmp(special_command, SCMD_HOME))
             load_menu(default_menu, false, true);
         else if (!strcmp(special_command, SCMD_BACK))
@@ -1973,8 +2001,12 @@ int main(int argc, char *argv[])
                 case SDL_MOUSEBUTTONDOWN:
                     if (config.mouse_select && event.button.button == SDL_BUTTON_LEFT) {
                         ticks.last_input = ticks.main;
-                        play_sound(SOUND_SELECT);
-                        execute_command(selected_entry()->cmd);
+                        if (layout_popup_active())
+                            layout_popup_command(SCMD_SELECT);
+                        else {
+                            play_sound(SOUND_SELECT);
+                            execute_command(selected_entry()->cmd);
+                        }
                     }
                     break;
 

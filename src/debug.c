@@ -8,6 +8,7 @@
 #include <launcher_config.h>
 #include "util.h"
 #include "debug.h"
+#include "layouts.h"
 #include "platform/platform.h"
 #ifdef __unix__
 #include "platform/unix.h"
@@ -143,6 +144,7 @@ void debug_settings()
     log_debug("%-25s %.0f%%", SETTING_FOCUS_SCALE ":", (double) (config.focus_scale * 100.0f));
     log_debug("%-25s %.0f%%", SETTING_FOCUS_POSITION ":", (double) (config.focus_position * 100.0f));
     log_debug("%-25s %.0f%%", SETTING_UNFOCUSED_OPACITY ":", (double) config.unfocused_alpha * 100.0 / 255.0);
+    DEBUG_STR(SETTING_LAYOUT_SCHEME, layout_id(config.layout_scheme));
     DEBUG_MODE(SETTING_SUBMENU_MODE, MODE_SETTING_SUBMENU, config.submenu_mode);
     log_debug("%-25s %.0f%%", SETTING_COLUMN_ICON_SIZE ":", (double) (config.column_icon_scale * 100.0f));
     if (config.column_focus_scale > 0.0f)

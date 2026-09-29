@@ -18,6 +18,8 @@ set(SOURCES
   webimage.h
   json.c
   json.h
+  layouts.c
+  layouts.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

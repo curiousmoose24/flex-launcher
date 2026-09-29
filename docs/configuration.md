@@ -253,6 +253,7 @@ Default: true
 #### Layout
 The settings in this section define the geometric layout of the launcher.
 
+- [Scheme](#scheme)
 - [MaxButtons](#maxbuttons)
 - [ScrollMode](#scrollmode)
 - [ScrollTime](#scrolltime)
@@ -265,6 +266,14 @@ The settings in this section define the geometric layout of the launcher.
 - [IconSize](#iconsize)
 - [IconSpacing](#iconspacing)
 - [VCenter](#vcenter)
+
+##### Scheme
+The console layout scheme, chosen in the popup of the [:layouts](#layouts) special command. Valid options are:
+- `PS3`: The PlayStation 3's XrossMediaBar, the layout built from the other settings in this section.
+
+Choosing a scheme in the popup saves it to this setting.
+
+Default: PS3
 
 ##### MaxButtons
 The maximum number of buttons that can be displayed on the screen. If a menu has more entries than this value, it will be split into multiple pages. A value of 3-5 is sensible for a typical TV size and viewing distance.
@@ -576,6 +585,9 @@ Download a new background image now, when [Image](#image) is a URL. Optional key
 
 #### :togglebackground
 Switch between the `Wave` background and the picture background, and save the choice to the `Mode` setting in the `[Background]` section of the config file. The picture background is `Image` or `Slideshow`: the mode the launcher started in, or, when it started in `Wave` mode, `Image` if the [Image](#image) setting is set, otherwise `Slideshow` if [SlideshowDirectory](#slideshowdirectory) is set. The screen fades in from black when switching. If the entry's icon has an `_off` variant next to it (e.g. `background.svg` and `background_off.svg`), the variant is shown while the picture background is on.
+
+#### :layouts
+Open a popup window listing the console layout schemes, with the current [Scheme](#scheme) marked. The popup takes all input while it is open: up and down (or [:up](#up) and [:down](#down)) move the selection, select chooses the highlighted scheme, saves it to the config file and closes the popup, and back, left or Escape (or [:back](#back)) closes it without changes.
 
 #### :togglesounds
 Turn navigation sounds on or off, and save the choice to the `Enabled` setting in the `[Sounds]` section of the config file. Turning sounds on plays the select chime, and turning them off plays the falling "off" chime. If the entry's icon has an `_off` variant next to it (e.g. `sound.svg` and `sound_off.svg`), the variant is shown while sounds are off.

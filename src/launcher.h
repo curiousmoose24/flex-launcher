@@ -51,6 +51,7 @@
 #define SCMD_TOGGLE_SOUNDS ":togglesounds"
 #define SCMD_TOGGLE_BACKGROUND ":togglebackground"
 #define SCMD_WALLPAPER ":wallpaper"
+#define SCMD_LAYOUTS ":layouts"
 #define SCMD_HOME ":home"
 #define SCMD_BACK ":back"
 #define SCMD_QUIT ":quit"
@@ -321,6 +322,7 @@ typedef struct {
     bool titles_focused_only;
     bool title_glow; // Soft glow around the title of the selected entry
     SDL_Color title_glow_color; // Alpha is the glow opacity
+    int layout_scheme; // Index of the console layout scheme chosen in the :layouts popup
     ModeSubmenu submenu_mode; // Column: submenus drop down vertically below their entry (carousel)
     float column_icon_scale; // Size of column icons relative to IconSize
     float column_focus_scale; // Size of the selected column icon relative to the others (0 = automatic)
