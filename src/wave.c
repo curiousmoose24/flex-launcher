@@ -310,10 +310,12 @@ static void draw_sparkles(float seconds, SDL_Color light)
             age = 0.0f;
         }
 
-        // Fade in and out at the ends of its life, with a gentle twinkle
+        // Fade in and out at the ends of its life
         float envelope = fminf(fminf(age, sparkle->life - age) / SPARKLE_FADE_TIME, 1.0f);
         envelope = envelope * envelope * (3.0f - 2.0f * envelope);
-        float twinkle = 0.75f + 0.25f * sinf(sparkle->twinkle_speed * age + sparkle->twinkle_phase);
+        // Twinkle between nearly dark and full brightness; squaring gives short, bright flashes
+        float twinkle = 0.5f + 0.5f * sinf(sparkle->twinkle_speed * age + sparkle->twinkle_phase);
+        twinkle = 0.08f + 0.92f * twinkle * twinkle;
         float alpha = 255.0f * sparkle->brightness * envelope * twinkle;
         if (alpha < 1.0f)
             continue;
