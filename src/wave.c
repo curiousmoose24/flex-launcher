@@ -222,7 +222,7 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define SPARKLE_DEPTH_CHANCE 0.5f   // Chance that a long-lived sparkle moves towards or away from the viewer
 #define SPARKLE_DEPTH_MIN_LIFE 2.0f // Seconds a sparkle must live to move in depth
 #define SPARKLE_LEAVE_SPEED 0.5f    // Speed of the sparkles that leave the screen, relative to other zooming sparkles
-#define SPARKLE_SPEED 0.125f       // Scales all sparkle motion
+#define SPARKLE_SPEED 0.09375f      // Scales all sparkle motion
 #define SPARKLE_BLUR_TIME 0.035f    // A moving sparkle's streak shows where it was this long ago
 #define SPARKLE_TEXTURE_SIZE 32
 #define SPARKLE_GLOW_TEXTURE_SIZE 64
@@ -275,7 +275,7 @@ static void spawn_sparkle(Sparkle *sparkle, float seconds)
                     sparkle->zoom ? random_float(1.5f, 3.0f) : 0.5f + 2.5f * r * r;
 
     // Rest in the dark first, so each sparkle only shows now and then
-    sparkle->shown = sparkle->leaves ? 16.0f : sparkle->life; // Leaving takes about 16 seconds
+    sparkle->shown = sparkle->leaves ? 18.0f : sparkle->life; // Leaving takes about 18 seconds
     sparkle->rest = random_float(0.0f, 2.0f * SPARKLE_REST) * sparkle->shown;
 
     // Long-lived sparkles may drift towards or away from the viewer
