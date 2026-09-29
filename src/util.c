@@ -571,8 +571,15 @@ int config_handler(void *user, const char *section, const char *name, const char
         // Store data in entry struct
         int i;
         for (i = 0;i < 3 && token != NULL; i++) {
-            if (i == 0)
+            if (i == 0) {
                 entry->title = strdup(token);
+                entry->title_off = NULL;
+                char *separator = strchr(entry->title, '|');
+                if (separator != NULL) {
+                    *separator = '\0';
+                    entry->title_off = strdup(separator + 1);
+                }
+            }
             else if (i == 1) {
                 entry->icon_path = strdup(token);
                 clean_path(entry->icon_path);

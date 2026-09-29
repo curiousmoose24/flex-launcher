@@ -175,6 +175,7 @@ typedef struct {
 // Linked list for menu entries
 typedef struct entry {
     char           *title;
+    char           *title_off; // Toggle entries ("Title|Off title"): the title shown in the off state, or NULL
     char           *icon_path;
     char           *icon_selected_path;
     char           *cmd;
@@ -187,6 +188,12 @@ typedef struct entry {
     int            title_glow_padding; // Extra space around the title in the glow texture
     SDL_Rect       text_rect;
     int            title_offset;
+    // The other title's textures, swapped with the ones above when the toggle's state changes
+    SDL_Texture    *other_title_texture;
+    SDL_Texture    *other_title_glow;
+    int            other_title_glow_padding;
+    SDL_Rect       other_text_rect;
+    bool           showing_off_title;
     struct entry   *next;     // Next visible entry
     struct entry   *previous; // Previous visible entry
     struct entry   *all_next; // Next entry, including hidden ones

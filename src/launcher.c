@@ -438,6 +438,7 @@ static void cleanup()
         entry = menu->all_entries;
         while (entry != NULL) {
             free(entry->title);
+            free(entry->title_off);
             free(entry->icon_path);
             free(entry->icon_selected_path);
             free(entry->cmd);
@@ -740,15 +741,51 @@ static void carousel_move(Direction direction)
 // Get the icon to draw for an entry: the "off" icon of a toggle entry while its setting is off
 // (:togglesounds while sounds are off, :togglebackground while the Wave background is off),
 // otherwise the selected icon if available
+// A function to check whether a toggle entry is in its off state: sounds or sparkles off,
+// or the picture background showing instead of the Wave background
+static bool entry_off(const Entry *entry)
+{
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS))
+        return !config.sounds_enabled;
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES))
+        return !config.wave_sparkles;
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND))
+        return config.background_mode != BACKGROUND_WAVE;
+    return false;
+}
+
+// A function to show the title that matches each toggle entry's state
+static void update_toggle_titles()
+{
+    for (Menu *menu = config.first_menu; menu != NULL; menu = menu->next) {
+        if (!menu->rendered)
+            continue;
+        for (Entry *entry = menu->all_entries; entry != NULL; entry = entry->all_next) {
+            if (entry->title_off == NULL || entry->showing_off_title == entry_off(entry))
+                continue;
+            SDL_Texture *texture = entry->title_texture;
+            SDL_Texture *glow = entry->title_glow;
+            int padding = entry->title_glow_padding;
+            SDL_Rect rect = entry->text_rect;
+            entry->title_texture = entry->other_title_texture;
+            entry->title_glow = entry->other_title_glow;
+            entry->title_glow_padding = entry->other_title_glow_padding;
+            entry->text_rect = entry->other_text_rect;
+            entry->text_rect.x = rect.x + (rect.w - entry->text_rect.w) / 2; // Keep it centered
+            entry->text_rect.y = rect.y;
+            entry->other_title_texture = texture;
+            entry->other_title_glow = glow;
+            entry->other_title_glow_padding = padding;
+            entry->other_text_rect = rect;
+            entry->showing_off_title = !entry->showing_off_title;
+        }
+    }
+}
+
 static SDL_Texture *entry_icon(Entry *entry, bool selected)
 {
-    if (entry->icon_off != NULL) {
-        bool off = !strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS) ? !config.sounds_enabled :
-                   !strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES) ? !config.wave_sparkles :
-                   config.background_mode != BACKGROUND_WAVE;
-        if (off)
-            return entry->icon_off;
-    }
+    if (entry->icon_off != NULL && entry_off(entry))
+        return entry->icon_off;
     if (selected && entry->icon_selected != NULL)
         return entry->icon_selected;
     return entry->icon;
@@ -1118,11 +1155,24 @@ static void render_buttons(Menu *menu)
             if (config.title_glow && title_surface != NULL)
                 entry->title_glow = render_glow_texture(title_surface, config.title_glow_color, &entry->title_glow_padding);
             entry->title_texture = load_texture(title_surface);
+
+            // A toggle's off title, swapped in by update_toggle_titles()
+            entry->other_title_texture = NULL;
+            entry->other_title_glow = NULL;
+            entry->showing_off_title = false;
+            if (entry->title_off != NULL) {
+                int off_h;
+                SDL_Surface *off_surface = render_text(entry->title_off, &title_info, &entry->other_text_rect, &off_h);
+                if (config.title_glow && off_surface != NULL)
+                    entry->other_title_glow = render_glow_texture(off_surface, config.title_glow_color, &entry->other_title_glow_padding);
+                entry->other_title_texture = load_texture(off_surface);
+            }
             if (config.title_oversize_mode == OVERSIZE_SHRINK && h != geo.font_height)
                 entry->title_offset = (geo.font_height - h) / 2;
         }
     }
     menu->rendered = true;
+    update_toggle_titles();
 }
 
 // A function to move the selection left when clicked by user
@@ -1408,8 +1458,10 @@ static void execute_command(const char *command)
             play_sound(SOUND_SELECT);
             execute_command(selected_entry()->cmd);
         }
-        else if (!strcmp(special_command, SCMD_TOGGLE_SOUNDS))
+        else if (!strcmp(special_command, SCMD_TOGGLE_SOUNDS)) {
             toggle_sounds();
+            update_toggle_titles();
+        }
         else if (!strcmp(special_command, SCMD_TOGGLE_BACKGROUND))
             toggle_background();
         else if (!strcmp(special_command, SCMD_TOGGLE_SPARKLES))
@@ -1858,6 +1910,7 @@ static void toggle_background()
         return;
     set_draw_color();
     start_fade_in();
+    update_toggle_titles();
     if (config.context_entries)
         filter_menus();
     log_debug("Background mode: %s", get_mode_setting(MODE_SETTING_BACKGROUND, config.background_mode));
@@ -1929,6 +1982,7 @@ static void filter_menus()
 static void toggle_sparkles()
 {
     config.wave_sparkles = !config.wave_sparkles;
+    update_toggle_titles();
     log_debug("Sparkles %s", config.wave_sparkles ? "enabled" : "disabled");
     if (config.config_file_path != NULL &&
     !save_config_setting(config.config_file_path, "Background", SETTING_WAVE_SPARKLES,

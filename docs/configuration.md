@@ -558,6 +558,9 @@ The Selected Icon Override feature allows the user to define a different icon fo
 
 For example, if the icon path for an entry is defined as `C:\icons\kodi.png`, then the program will check for the existence of `C:\icons\kodi_selected.png` and, if it exists, this icon will be shown when the entry is selected instead of the default. This feature allows the user to implement custom highlight effects such as glowing, color changes, etc.
 
+### Toggle Titles
+An entry with a [:togglesounds](#togglesounds), [:togglebackground](#togglebackground) or [:togglesparkles](#togglesparkles) command can have a second title for its off state, written after a `|`: sounds or sparkles off, or the picture background showing instead of the `Wave` background. The title switches along with the entry's `_off` icon. For example, `Entry1=Photos|Wave;background.svg;:togglebackground` reads "Photos" while the `Wave` background is showing and "Wave" while the picture background is.
+
 ### Default Entry
 A menu section can set `DefaultEntry=N` to start on its Nth entry (counting the entries that are shown) instead of the one selected last. In `Column` [SubmenuMode](#submenumode), the column starts on that entry every time it's switched to, so the entries before it sit above the menu row. For example, `DefaultEntry=2` puts the first entry above the row and selects the second.
 
