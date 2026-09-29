@@ -219,6 +219,8 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define SPARKLE_FADE_TIME 0.1f      // Seconds to fade in and out (at most): quick, like a glint
 #define SPARKLE_ZOOM_CHANCE 0.10f   // Fraction of sparkles that speed up and whoosh away
 #define SPARKLE_LEAVE_CHANCE 0.2f   // Fraction of zooming sparkles that keep going until they leave the screen
+#define SPARKLE_DEPTH_CHANCE 0.5f   // Chance that a long-lived sparkle moves towards or away from the viewer
+#define SPARKLE_DEPTH_MIN_LIFE 2.0f // Seconds a sparkle must live to move in depth
 #define SPARKLE_SPEED 0.125f       // Scales all sparkle motion
 #define SPARKLE_BLUR_TIME 0.035f    // A moving sparkle's streak shows where it was this long ago
 #define SPARKLE_TEXTURE_SIZE 32
@@ -241,6 +243,8 @@ typedef struct {
     float twinkle_phase;
     bool zoom;
     bool leaves;         // A zooming sparkle that doesn't fade, and flies off the screen
+    int depth;           // 1: moves towards the viewer (grows to double size), -1: away (shrinks to half), 0: neither
+    float shown;         // Seconds it's expected to be visible
 } Sparkle;
 
 static Sparkle sparkles[NUM_SPARKLES];
@@ -270,8 +274,13 @@ static void spawn_sparkle(Sparkle *sparkle, float seconds)
                     sparkle->zoom ? random_float(1.5f, 3.0f) : 0.5f + 2.5f * r * r;
 
     // Rest in the dark first, so each sparkle only shows now and then
-    float shown = sparkle->leaves ? 8.0f : sparkle->life; // Leaving takes about 8 seconds
-    sparkle->rest = random_float(0.0f, 2.0f * SPARKLE_REST) * shown;
+    sparkle->shown = sparkle->leaves ? 8.0f : sparkle->life; // Leaving takes about 8 seconds
+    sparkle->rest = random_float(0.0f, 2.0f * SPARKLE_REST) * sparkle->shown;
+
+    // Long-lived sparkles may drift towards or away from the viewer
+    sparkle->depth = 0;
+    if (sparkle->shown >= SPARKLE_DEPTH_MIN_LIFE && random_float(0.0f, 1.0f) < SPARKLE_DEPTH_CHANCE)
+        sparkle->depth = random_float(0.0f, 1.0f) < 0.5f ? 1 : -1;
     sparkle->born = seconds + sparkle->rest;
 
     // Born near the ribbons, clustered around their center
@@ -296,6 +305,19 @@ static void spawn_sparkle(Sparkle *sparkle, float seconds)
     sparkle->brightness = sparkle->zoom ? random_float(0.75f, 1.0f) : random_float(0.5f, 1.0f);
     sparkle->twinkle_speed = random_float(3.0f, 8.0f);
     sparkle->twinkle_phase = random_float(0.0f, 2.0f * PI_F);
+}
+
+// A function to get a sparkle's size at an age, relative to its size when born. A sparkle
+// moving in depth travels at a steady speed, so with perspective (size = 1 / distance) one
+// coming closer grows faster as it nears, reaching double size, and one moving away shrinks
+// ever more slowly to half size.
+static float sparkle_scale(const Sparkle *sparkle, float age)
+{
+    if (sparkle->depth == 0)
+        return 1.0f;
+    float t = fminf(age / sparkle->shown, 1.0f);
+    float distance = sparkle->depth > 0 ? 1.0f - 0.5f * t : 1.0f + t;
+    return 1.0f / distance;
 }
 
 // A function to get a sparkle's position at an age, in pixels
@@ -443,7 +465,7 @@ static void draw_sparkles(float seconds, SDL_Color light)
         }
         float x, y;
         sparkle_position(sparkle, age, &x, &y);
-        float size = fmaxf(h * sparkle->size, 3.0f);
+        float size = fmaxf(h * sparkle->size * sparkle_scale(sparkle, age), 3.0f);
         float margin = size * SPARKLE_GLOW_SCALE;
         if (x < -margin || x > w + margin || y < -margin || y > h + margin) {
             sparkle->life = age; // Gone off the screen: reborn next frame
