@@ -310,7 +310,7 @@ static void spawn_sparkle(Sparkle *sparkle, float seconds)
 
     sparkle->size = random_float(0.004f, 0.009f);
     sparkle->brightness = sparkle->zoom ? random_float(0.75f, 1.0f) : random_float(0.5f, 1.0f);
-    sparkle->twinkle_speed = random_float(6.0f, 16.0f);
+    sparkle->twinkle_speed = random_float(3.0f, 8.0f);
     sparkle->twinkle_phase = random_float(0.0f, 2.0f * PI_F);
 }
 
