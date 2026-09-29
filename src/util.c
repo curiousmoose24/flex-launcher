@@ -405,14 +405,19 @@ int config_handler(void *user, const char *section, const char *name, const char
             if (parse_percent_fraction(value, 0.0f, 1.0f, &volume))
                 config.sound_volume = (int) (volume * (float) SDL_MIX_MAXVOLUME + 0.5f);
         }
-        else if (MATCH(name, SETTING_SOUND_MOVE) || MATCH(name, SETTING_SOUND_SELECT) ||
-        MATCH(name, SETTING_SOUND_BACK) || MATCH(name, SETTING_SOUND_OFF)) {
-            SoundType type = MATCH(name, SETTING_SOUND_MOVE) ? SOUND_MOVE :
-                             MATCH(name, SETTING_SOUND_SELECT) ? SOUND_SELECT :
-                             MATCH(name, SETTING_SOUND_BACK) ? SOUND_BACK : SOUND_OFF;
-            free(config.sound_paths[type]);
-            config.sound_paths[type] = strdup(value);
-            clean_path(config.sound_paths[type]);
+        else {
+            static const char *sound_settings[NUM_SOUNDS] = {
+                SETTING_SOUND_MOVE, SETTING_SOUND_SELECT, SETTING_SOUND_BACK, SETTING_SOUND_OFF,
+                SETTING_SOUND_STARTUP, SETTING_SOUND_CONFIRM, SETTING_SOUND_ERROR
+            };
+            for (int type = 0; type < NUM_SOUNDS; type++) {
+                if (MATCH(name, sound_settings[type])) {
+                    free(config.sound_paths[type]);
+                    config.sound_paths[type] = strdup(value);
+                    clean_path(config.sound_paths[type]);
+                    break;
+                }
+            }
         }
     }
 

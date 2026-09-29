@@ -15,7 +15,49 @@ static SDL_AudioDeviceID device = 0;
 static SDL_AudioSpec device_spec;
 static Uint8 *sound_buffers[NUM_SOUNDS] = {NULL};
 static Uint32 sound_lengths[NUM_SOUNDS] = {0};
-static const char *default_sounds[NUM_SOUNDS] = {"move.wav", "select.wav", "back.wav", "off.wav"};
+static const char *default_sounds[NUM_SOUNDS] = {"move.wav", "select.wav", "back.wav", "off.wav", NULL, NULL, NULL};
+
+// Sounds are mixed in the audio callback on two voices: navigation sounds interrupt each
+// other on the first voice, while the startup sound plays on its own voice underneath them.
+typedef struct {
+    const Uint8 *buffer;
+    Uint32 length;
+    Uint32 position;
+} Voice;
+
+enum {
+    VOICE_EFFECT,
+    VOICE_STARTUP,
+    NUM_VOICES
+};
+
+static Voice voices[NUM_VOICES] = {{NULL, 0, 0}};
+
+// The audio callback: mixes the playing voices (their buffers already have the volume applied)
+static void mix_voices(void *userdata, Uint8 *stream, int length)
+{
+    (void) userdata;
+    SDL_memset(stream, device_spec.silence, (size_t) length);
+    for (int i = 0; i < NUM_VOICES; i++) {
+        Voice *voice = &voices[i];
+        if (voice->buffer == NULL)
+            continue;
+        Uint32 remaining = voice->length - voice->position;
+        Uint32 n = remaining < (Uint32) length ? remaining : (Uint32) length;
+        SDL_MixAudioFormat(stream, voice->buffer + voice->position, device_spec.format, n, SDL_MIX_MAXVOLUME);
+        voice->position += n;
+        if (voice->position >= voice->length)
+            voice->buffer = NULL;
+    }
+}
+
+static void stop_voices()
+{
+    SDL_LockAudioDevice(device);
+    for (int i = 0; i < NUM_VOICES; i++)
+        voices[i].buffer = NULL;
+    SDL_UnlockAudioDevice(device);
+}
 
 // A function to find a default sound file in the assets directory
 static char *find_default_sound(const char *file)
@@ -61,7 +103,7 @@ static void load_sound(SoundType type, const char *path)
     }
 
     // Apply the volume by mixing the sound into silence (the device format is signed, so silence is 0)
-    Uint32 length = (Uint32) cvt.len_cvt;
+    Uint32 length = ret > 0 ? (Uint32) cvt.len_cvt : wav_length; // len_cvt is only set by a conversion
     Uint8 *buffer = SDL_calloc(1, length);
     SDL_MixAudioFormat(buffer, cvt.buf, device_spec.format, length, config.sound_volume);
     SDL_free(cvt.buf);
@@ -85,7 +127,7 @@ void init_sounds()
         .format = AUDIO_S16SYS,
         .channels = 2,
         .samples = 1024,
-        .callback = NULL
+        .callback = mix_voices
     };
     device = SDL_OpenAudioDevice(NULL, 0, &desired, &device_spec,
                  SDL_AUDIO_ALLOW_FREQUENCY_CHANGE | SDL_AUDIO_ALLOW_CHANNELS_CHANGE);
@@ -97,6 +139,8 @@ void init_sounds()
     }
 
     for (int i = 0; i < NUM_SOUNDS; i++) {
+        if (config.sound_paths[i] == NULL && default_sounds[i] == NULL)
+            continue;
         char *path = config.sound_paths[i] != NULL ? strdup(config.sound_paths[i]) : find_default_sound(default_sounds[i]);
         if (path == NULL)
             log_error("Could not find default sound '%s'", default_sounds[i]);
@@ -108,13 +152,17 @@ void init_sounds()
     SDL_PauseAudioDevice(device, 0);
 }
 
-// A function to play a navigation sound, interrupting any sound that is still playing
+// A function to play a sound, interrupting the navigation sound that is still playing.
+// The startup sound keeps playing underneath navigation sounds.
 void play_sound(SoundType type)
 {
+    if (type == SOUND_CONFIRM && sound_buffers[type] == NULL)
+        type = SOUND_SELECT; // Without a Confirm sound, choosing a setting sounds like selecting
     if (!config.sounds_enabled || device == 0 || sound_buffers[type] == NULL)
         return;
-    SDL_ClearQueuedAudio(device);
-    SDL_QueueAudio(device, sound_buffers[type], sound_lengths[type]);
+    SDL_LockAudioDevice(device);
+    voices[type == SOUND_STARTUP ? VOICE_STARTUP : VOICE_EFFECT] = (Voice) {sound_buffers[type], sound_lengths[type], 0};
+    SDL_UnlockAudioDevice(device);
 }
 
 // A function to pause the audio device while an application is running
@@ -123,7 +171,7 @@ void pause_sounds(bool pause)
     if (device == 0)
         return;
     if (pause)
-        SDL_ClearQueuedAudio(device);
+        stop_voices();
     SDL_PauseAudioDevice(device, pause ? 1 : 0);
 }
 
@@ -132,7 +180,7 @@ void pause_sounds(bool pause)
 void toggle_sounds()
 {
     if (config.sounds_enabled) {
-        play_sound(SOUND_OFF);  // Queued before disabling, so it still finishes playing
+        play_sound(SOUND_OFF);  // Started before disabling, so it still finishes playing
         config.sounds_enabled = false;
     }
     else {
@@ -151,7 +199,7 @@ void toggle_sounds()
 void quit_sounds()
 {
     if (device != 0) {
-        SDL_CloseAudioDevice(device);
+        SDL_CloseAudioDevice(device); // Stops the callback before the buffers are freed
         device = 0;
     }
     for (int i = 0; i < NUM_SOUNDS; i++) {

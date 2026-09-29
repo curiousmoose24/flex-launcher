@@ -1426,6 +1426,8 @@ static void execute_command(const char *command)
             else if (config.on_launch == ON_LAUNCH_QUIT)
                 quit(EXIT_SUCCESS);
         }
+        else
+            play_sound(SOUND_ERROR);
     }
     free(cmd);
 }
@@ -1816,6 +1818,7 @@ static void toggle_background()
     if (config.background_mode == BACKGROUND_WAVE) {
         if (picture_mode == BACKGROUND_COLOR) {
             log_error("No background Image or SlideshowDirectory set to switch to");
+            play_sound(SOUND_ERROR);
             return;
         }
         config.background_mode = picture_mode;
@@ -1825,6 +1828,7 @@ static void toggle_background()
     else if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW) {
         if (!wave_background_supported()) {
             log_error("The Wave background needs SDL 2.0.18 or newer");
+            play_sound(SOUND_ERROR);
             return;
         }
         config.background_mode = BACKGROUND_WAVE;
@@ -1978,6 +1982,8 @@ int main(int argc, char *argv[])
     error = load_menu(default_menu, false, true);
     if (error)
         log_fatal("Could not load default menu %s", config.default_menu);
+
+    play_sound(SOUND_STARTUP);
 
     // Execute startup command
     if (config.startup_cmd != NULL)

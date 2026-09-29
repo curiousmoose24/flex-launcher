@@ -242,7 +242,7 @@ void layout_popup_command(const char *command)
         }
     }
     else if (!strcmp(command, SCMD_SELECT)) {
-        play_sound(SOUND_SELECT);
+        play_sound(SOUND_CONFIRM);
         choose_layout(popup.selected);
         close_popup();
     }

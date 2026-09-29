@@ -193,6 +193,9 @@ void debug_settings()
     log_debug("%-25s %s", SETTING_SOUND_SELECT ":", config.sound_paths[SOUND_SELECT] ? config.sound_paths[SOUND_SELECT] : "(default)");
     log_debug("%-25s %s", SETTING_SOUND_BACK ":", config.sound_paths[SOUND_BACK] ? config.sound_paths[SOUND_BACK] : "(default)");
     log_debug("%-25s %s", SETTING_SOUND_OFF ":", config.sound_paths[SOUND_OFF] ? config.sound_paths[SOUND_OFF] : "(default)");
+    log_debug("%-25s %s", SETTING_SOUND_STARTUP ":", config.sound_paths[SOUND_STARTUP] ? config.sound_paths[SOUND_STARTUP] : "(none)");
+    log_debug("%-25s %s", SETTING_SOUND_CONFIRM ":", config.sound_paths[SOUND_CONFIRM] ? config.sound_paths[SOUND_CONFIRM] : "(none)");
+    log_debug("%-25s %s", SETTING_SOUND_ERROR ":", config.sound_paths[SOUND_ERROR] ? config.sound_paths[SOUND_ERROR] : "(none)");
     log_debug("");
 
     log_debug("======================== Clock =========================\n");

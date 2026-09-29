@@ -111,6 +111,9 @@ typedef enum {
     SOUND_SELECT,
     SOUND_BACK,
     SOUND_OFF,
+    SOUND_STARTUP, // Plays once when the launcher starts; no default
+    SOUND_CONFIRM, // A setting was chosen (e.g. in the layout popup); no default
+    SOUND_ERROR,   // An action failed; no default
     NUM_SOUNDS
 } SoundType;
 
