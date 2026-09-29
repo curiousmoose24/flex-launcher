@@ -237,6 +237,14 @@ int config_handler(void *user, const char *section, const char *name, const char
             if (minutes >= 0)
                 config.image_refresh = (Uint32) minutes * 60000;
         }
+        else if (MATCH(name, SETTING_IMAGE_JSON)) {
+            free(config.image_json);
+            config.image_json = strdup(value);
+        }
+        else if (MATCH(name, SETTING_IMAGE_KEYWORDS)) {
+            free(config.image_keywords);
+            config.image_keywords = strdup(value);
+        }
         else if (MATCH(name, SETTING_IMAGE_BLUR)) {
             // Homepage (Tailwind) blur sizes, in CSS pixels
             static const char *names[] = {"none", "sm", "md", "lg", "xl", "2xl", "3xl"};

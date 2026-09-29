@@ -18,9 +18,12 @@
 #include "image.h"
 #include "util.h"
 #include "debug.h"
+#include "json.h"
 
 // Background images from a URL, like Homepage's background setting, e.g.
 // Image=https://picsum.photos/{width}/{height} for a random photo sized to the screen.
+// With ImageJson, the URL returns JSON (e.g. a Wallhaven search) and ImageJson is the path to
+// the image URL in it. {keywords} is replaced with one of the comma-separated ImageKeywords.
 // The last image is cached so it shows immediately at startup; a fresh image is then
 // downloaded in a separate thread and faded in, and again every ImageRefresh minutes.
 
@@ -36,7 +39,9 @@ extern SDL_Texture *background_texture;
 
 enum { DOWNLOAD_IDLE, DOWNLOAD_RUNNING, DOWNLOAD_DONE };
 
-static char *url = NULL;
+static char *url = NULL; // The Image setting (URL template); NULL until initialized
+static char *request_url = NULL; // The URL of the current download, with placeholders filled in
+static bool download_again = false; // A new download was requested while one was running
 static char cache_path[MAX_PATH_CHARS + 1] = "";
 static SDL_Thread *download_thread = NULL;
 static SDL_atomic_t download_state;
@@ -54,7 +59,37 @@ bool is_web_image(const char *path)
     return path != NULL && (!strncmp(path, "http://", 7) || !strncmp(path, "https://", 8));
 }
 
-// A function to replace {width} and {height} in the URL with the screen size
+// A function to append one of the comma-separated ImageKeywords, picked at random and URL-encoded
+static void append_keyword(char *buffer, size_t size)
+{
+    if (config.image_keywords == NULL)
+        return;
+    int count = 1;
+    for (const char *c = config.image_keywords; *c != '\0'; c++)
+        if (*c == ',')
+            count++;
+    int pick = rand() % count;
+    const char *start = config.image_keywords;
+    for (int i = 0; i < pick; i++)
+        start = strchr(start, ',') + 1;
+    const char *end = strchr(start, ',');
+    if (end == NULL)
+        end = start + strlen(start);
+    while (start < end && (*start == ' ' || *start == '\t'))
+        start++;
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
+        end--;
+    for (const char *c = start; c < end && strlen(buffer) + 4 < size; c++) {
+        size_t length = strlen(buffer);
+        unsigned char ch = (unsigned char) *c;
+        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || strchr("-_.~", ch))
+            buffer[length] = (char) ch, buffer[length + 1] = '\0';
+        else
+            snprintf(buffer + length, size - length, "%%%02X", ch);
+    }
+}
+
+// A function to replace {width}, {height} and {keywords} in the URL
 static char *expand_url(const char *template)
 {
     char buffer[2048] = "";
@@ -67,6 +102,10 @@ static char *expand_url(const char *template)
         else if (!strncmp(p, "{height}", 8)) {
             snprintf(buffer + strlen(buffer), sizeof(buffer) - strlen(buffer), "%i", geo.screen_height);
             p += 8;
+        }
+        else if (!strncmp(p, "{keywords}", 10)) {
+            append_keyword(buffer, sizeof(buffer));
+            p += 10;
         }
         else {
             size_t length = strlen(buffer);
@@ -159,34 +198,88 @@ static int progress_callback(void *userdata, curl_off_t dltotal, curl_off_t dlno
     return SDL_AtomicGet(&abort_download) ? 1 : 0;
 }
 
-// Download thread: fetch the image, cache it, and apply the background filters
+// A function to download a URL into a buffer (NUL-terminated, so JSON can be parsed)
+static bool fetch(const char *address, Buffer *buffer)
+{
+    bool ok = false;
+    CURL *curl = curl_easy_init();
+    if (curl == NULL)
+        return false;
+    curl_easy_setopt(curl, CURLOPT_URL, address);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, DOWNLOAD_TIMEOUT_SECONDS);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, EXECUTABLE_TITLE);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, buffer);
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
+    CURLcode result = curl_easy_perform(curl);
+    if (result != CURLE_OK)
+        log_error("Could not download %s\n%s", address, curl_easy_strerror(result));
+    else if (write_callback("", 1, 1, buffer) == 1) { // NUL terminator
+        buffer->size--;
+        ok = true;
+    }
+    curl_easy_cleanup(curl);
+    return ok;
+}
+
+// A function to make a relative image URL (e.g. "/image.jpg") absolute, using the request URL's origin
+static char *absolute_url(const char *image_url)
+{
+    if (image_url[0] != '/')
+        return strdup(image_url);
+    if (image_url[1] == '/') { // Protocol-relative: "//host/path"
+        char *out = malloc(strlen(image_url) + 7);
+        strcpy(out, "https:");
+        strcat(out, image_url);
+        return out;
+    }
+    const char *host = strstr(request_url, "://");
+    if (host == NULL)
+        return NULL;
+    const char *path = strchr(host + 3, '/');
+    size_t origin = path != NULL ? (size_t) (path - request_url) : strlen(request_url);
+    char *out = malloc(origin + strlen(image_url) + 1);
+    memcpy(out, request_url, origin);
+    strcpy(out + origin, image_url);
+    return out;
+}
+
+// Download thread: fetch the image (via the JSON response if ImageJson is set), cache it,
+// and apply the background filters
 static int download_image(void *data)
 {
     (void) data;
     SDL_Surface *surface = NULL;
     Buffer buffer = {NULL, 0};
-    CURL *curl = curl_easy_init();
-    if (curl != NULL) {
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
-        curl_easy_setopt(curl, CURLOPT_TIMEOUT, DOWNLOAD_TIMEOUT_SECONDS);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, EXECUTABLE_TITLE);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buffer);
-        curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-        curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
-        CURLcode result = curl_easy_perform(curl);
-        if (result != CURLE_OK)
-            log_error("Could not download background image %s\n%s", url, curl_easy_strerror(result));
-        else {
-            surface = IMG_Load_RW(SDL_RWFromConstMem(buffer.data, (int) buffer.size), 1);
-            if (surface == NULL)
-                log_error("Could not decode background image %s\n%s", url, IMG_GetError());
-            else if (cache_path[0] != '\0' && !save_cache_file(buffer.data, buffer.size))
-                log_error("Could not save background image to cache %s", cache_path);
+    bool ok = fetch(request_url, &buffer);
+
+    // The URL returned JSON: find the image URL in it, then download the image
+    if (ok && config.image_json != NULL) {
+        char *image_url = json_get_string(buffer.data, config.image_json);
+        char *absolute = image_url != NULL ? absolute_url(image_url) : NULL;
+        free(image_url);
+        free(buffer.data);
+        buffer = (Buffer) {NULL, 0};
+        if (absolute == NULL) {
+            log_error("No image URL at '%s' in the response from %s", config.image_json, request_url);
+            ok = false;
         }
-        curl_easy_cleanup(curl);
+        else {
+            log_debug("Background image: %s", absolute);
+            ok = fetch(absolute, &buffer);
+            free(absolute);
+        }
+    }
+
+    if (ok) {
+        surface = IMG_Load_RW(SDL_RWFromConstMem(buffer.data, (int) buffer.size), 1);
+        if (surface == NULL)
+            log_error("Could not decode background image from %s\n%s", request_url, IMG_GetError());
+        else if (cache_path[0] != '\0' && !save_cache_file(buffer.data, buffer.size))
+            log_error("Could not save background image to cache %s", cache_path);
     }
     free(buffer.data);
     downloaded_surface = apply_background_filters(surface);
@@ -198,8 +291,14 @@ static int download_image(void *data)
 static void start_download()
 {
 #ifdef HAVE_CURL
-    if (SDL_AtomicGet(&download_state) != DOWNLOAD_IDLE)
+    if (SDL_AtomicGet(&download_state) != DOWNLOAD_IDLE) {
+        download_again = true;
         return;
+    }
+    download_again = false;
+    free(request_url);
+    request_url = expand_url(url);
+    log_debug("Background image request: %s", request_url);
     SDL_AtomicSet(&download_state, DOWNLOAD_RUNNING);
     download_thread = SDL_CreateThread(download_image, "Background Download Thread", NULL);
     if (download_thread == NULL)
@@ -214,8 +313,7 @@ void init_web_background()
     curl_global_init(CURL_GLOBAL_DEFAULT);
     SDL_AtomicSet(&download_state, DOWNLOAD_IDLE);
     SDL_AtomicSet(&abort_download, 0);
-    url = expand_url(config.background_image);
-    log_debug("Background image URL: %s", url);
+    url = strdup(config.background_image);
     init_cache_path();
     if (cache_path[0] != '\0') {
         SDL_Surface *cached = IMG_Load(cache_path);
@@ -249,6 +347,10 @@ void update_web_background()
                                           config.image_refresh : RETRY_PERIOD);
         downloaded_surface = NULL;
         SDL_AtomicSet(&download_state, DOWNLOAD_IDLE);
+
+        // A new image was requested while this one was downloading (e.g. new keywords)
+        if (download_again)
+            next_download = ticks.main;
     }
 
     // Finish the fade
@@ -279,6 +381,30 @@ void draw_web_background_transition()
     SDL_RenderCopy(renderer, fade_texture, NULL, NULL);
 }
 
+// A function to download a new URL background image now (:wallpaper), optionally with new
+// keywords, which are saved to the config file
+void new_web_background(const char *keywords)
+{
+    if (keywords != NULL) {
+        while (*keywords == ' ')
+            keywords++;
+        if (*keywords != '\0') {
+            free(config.image_keywords);
+            config.image_keywords = strdup(keywords);
+            log_debug("Wallpaper keywords: %s", keywords);
+            if (config.config_file_path != NULL &&
+            !save_config_setting(config.config_file_path, "Background", SETTING_IMAGE_KEYWORDS, keywords))
+                log_error("Could not save the wallpaper keywords to the config file");
+        }
+    }
+    if (!is_web_image(config.background_image))
+        return;
+    if (url == NULL)
+        init_web_background();
+    else
+        start_download();
+}
+
 // A function to stop any download in progress and free the background resources
 void quit_web_background()
 {
@@ -299,6 +425,8 @@ void quit_web_background()
     }
     free(url);
     url = NULL;
+    free(request_url);
+    request_url = NULL;
 #ifdef HAVE_CURL
     curl_global_cleanup();
 #endif

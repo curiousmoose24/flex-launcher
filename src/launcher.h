@@ -50,6 +50,7 @@
 #define SCMD_DOWN ":down"
 #define SCMD_TOGGLE_SOUNDS ":togglesounds"
 #define SCMD_TOGGLE_BACKGROUND ":togglebackground"
+#define SCMD_WALLPAPER ":wallpaper"
 #define SCMD_HOME ":home"
 #define SCMD_BACK ":back"
 #define SCMD_QUIT ":quit"
@@ -326,6 +327,8 @@ typedef struct {
     Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
     WaveColorMode wave_color_mode;
     Uint32 image_refresh; // Reload a URL background image this often, in ms (0 = at startup only)
+    char *image_json; // Path to the image URL in a JSON response, e.g. "data.0.path" (NULL: the URL is the image)
+    char *image_keywords; // Comma-separated keywords for {keywords} in the image URL; one is picked at random
     float image_blur; // Blur radius in pixels at 1920 px screen width (Homepage's blur sizes)
     float image_brightness; // 1.0 = unchanged
     float image_saturation; // 1.0 = unchanged

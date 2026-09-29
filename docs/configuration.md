@@ -125,6 +125,8 @@ The settings in this section control what Flex Launcher will display in the back
 - [Mode](#mode)
 - [Color](#color)
 - [Image](#image)
+- [ImageJson](#imagejson)
+- [ImageKeywords](#imagekeywords)
 - [ImageRefresh](#imagerefresh)
 - [ImageBlur](#imageblur)
 - [ImageBrightness](#imagebrightness)
@@ -159,6 +161,23 @@ Default: #000000 (Black)
 When `Mode` is set to "Image", this setting defines the image to be displayed in the background. The value should be a path to an image file. If the image is not the same resolution as your desktop, it will be stretched accordingly.
 
 The image can also be a URL (http:// or https://), like the background of the Homepage dashboard, e.g. `https://picsum.photos/{width}/{height}` for a random photo. `{width}` and `{height}` are replaced with the screen size. The image is downloaded in the background and faded in, and the last image is cached (in `~/.cache/flex-launcher/wallpaper`) so it shows immediately at the next startup. Loading images from URLs requires Flex Launcher to be built with libcurl.
+
+##### ImageJson
+When [Image](#image) is a URL that returns JSON instead of an image, such as a wallpaper search API, this is the path to the image URL in the response: object keys and array indexes separated by dots, where `*` picks a random array element. For example, `data.0.path` for [Wallhaven](https://wallhaven.cc/help/api) search results. Relative image URLs are resolved against the request URL.
+
+Example, a random safe-for-work 16:9 wallpaper at least the size of the screen, matching [ImageKeywords](#imagekeywords):
+```
+Image=https://wallhaven.cc/api/v1/search?q={keywords}&categories=100&purity=100&atleast={width}x{height}&ratios=16x9&sorting=random
+ImageJson=data.0.path
+ImageKeywords=nature, mountains, space
+```
+
+Default: (none)
+
+##### ImageKeywords
+Comma-separated keywords (e.g. wallpaper genres or tags) for the `{keywords}` placeholder in the [Image](#image) URL. For each new image, one of the keywords is picked at random. The [:wallpaper](#wallpaper) special command can change the keywords from a menu.
+
+Default: (none)
 
 ##### ImageRefresh
 When [Image](#image) is a URL, download a new image this often, in minutes. The new image fades in over [SlideshowTransitionTime](#slideshowtransitiontime). A value of 0 downloads a new image only at startup.
@@ -551,6 +570,9 @@ Move the highlight cursor left.
 
 #### :right
 Move the highlight cursor right.
+
+#### :wallpaper
+Download a new background image now, when [Image](#image) is a URL. Optional keywords after the command replace [ImageKeywords](#imagekeywords) and are saved to the config file, so menu entries can pick a wallpaper genre, e.g. `Entry1=Space;space.svg;:wallpaper space` or `:wallpaper nature, mountains`. If the `Wave` background is showing, the launcher switches to the picture background.
 
 #### :togglebackground
 Switch between the `Wave` background and the picture background, and save the choice to the `Mode` setting in the `[Background]` section of the config file. The picture background is `Image` or `Slideshow`: the mode the launcher started in, or, when it started in `Wave` mode, `Image` if the [Image](#image) setting is set, otherwise `Slideshow` if [SlideshowDirectory](#slideshowdirectory) is set. The screen fades in from black when switching. If the entry's icon has an `_off` variant next to it (e.g. `background.svg` and `background_off.svg`), the variant is shown while the picture background is on.

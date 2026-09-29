@@ -16,6 +16,8 @@ set(SOURCES
   wave.h
   webimage.c
   webimage.h
+  json.c
+  json.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

@@ -154,6 +154,8 @@ Config config = {
     .fade_time                        = DEFAULT_FADE_TIME,
     .wave_color_mode                  = WAVE_COLOR_MONTH,
     .image_refresh                    = 0,
+    .image_json                       = NULL,
+    .image_keywords                   = NULL,
     .image_blur                       = 0.0f,
     .image_brightness                 = 1.0f,
     .image_saturation                 = 1.0f,
@@ -410,6 +412,8 @@ static void cleanup()
     free(config.startup_cmd);
     free(config.quit_cmd);
     free(config.config_file_path);
+    free(config.image_json);
+    free(config.image_keywords);
     free(highlight);
     free(scroll);
     free(screensaver);
@@ -1363,6 +1367,12 @@ static void execute_command(const char *command)
             toggle_sounds();
         else if (!strcmp(special_command, SCMD_TOGGLE_BACKGROUND))
             toggle_background();
+        else if (!strcmp(special_command, SCMD_WALLPAPER)) {
+            // Optional keywords, then show the picture background with a new image
+            new_web_background(strtok(NULL, ""));
+            if (config.background_mode == BACKGROUND_WAVE && is_web_image(config.background_image))
+                toggle_background();
+        }
         else if (!strcmp(special_command, SCMD_HOME))
             load_menu(default_menu, false, true);
         else if (!strcmp(special_command, SCMD_BACK))
@@ -1855,6 +1865,7 @@ int main(int argc, char *argv[])
     ticks.main = SDL_GetTicks();
     ticks.last_input = ticks.main;
     ticks.program_start = ticks.main;
+    srand((unsigned int) time(NULL));
     start_fade_in();
 
     // Load gamepad overrides
