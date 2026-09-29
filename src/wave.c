@@ -221,9 +221,9 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define SPARKLE_LEAVE_CHANCE 0.2f   // Fraction of zooming sparkles that keep going until they leave the screen
 #define SPARKLE_DEPTH_CHANCE 0.5f   // Chance that a long-lived sparkle moves towards or away from the viewer
 #define SPARKLE_DEPTH_MIN_LIFE 2.0f // Seconds a sparkle must live to move in depth
-#define SPARKLE_LEAVE_SPEED 0.5f    // Speed of the sparkles that leave the screen, relative to other zooming sparkles
+#define SPARKLE_LEAVE_SPEED 1.0f    // Speed of the sparkles that leave the screen, relative to other zooming sparkles
 #define SPARKLE_LEAVE_GROWTH 8.0f   // Final size of a sparkle that approaches while leaving the screen (others double)
-#define SPARKLE_SPEED 0.09375f      // Scales all sparkle motion
+#define SPARKLE_SPEED 0.046875f     // Scales all sparkle motion
 #define SPARKLE_BLUR_TIME 0.035f    // A moving sparkle's streak shows where it was this long ago
 #define SPARKLE_TEXTURE_SIZE 32
 #define SPARKLE_GLOW_TEXTURE_SIZE 64
