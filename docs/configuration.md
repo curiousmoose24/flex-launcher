@@ -160,7 +160,7 @@ Default: #000000 (Black)
 ##### Image
 When `Mode` is set to "Image", this setting defines the image to be displayed in the background. The value should be a path to an image file. If the image is not the same resolution as your desktop, it will be stretched accordingly.
 
-The image can also be a URL (http:// or https://), like the background of the Homepage dashboard, e.g. `https://picsum.photos/{width}/{height}` for a random photo. `{width}` and `{height}` are replaced with the screen size. The image is downloaded in the background and faded in, and the last image is cached (in `~/.cache/flex-launcher/wallpaper`) so it shows immediately at the next startup. Loading images from URLs requires Flex Launcher to be built with libcurl.
+The image can also be a URL (http:// or https://), like the background of the Homepage dashboard, e.g. a random wallpaper from a [Wallhaven](https://wallhaven.cc) search (see [ImageJson](#imagejson)). `{width}` and `{height}` are replaced with the screen size. The image is downloaded in the background and faded in, and the last image is cached (in `~/.cache/flex-launcher/wallpaper`) so it shows immediately at the next startup. Loading images from URLs requires Flex Launcher to be built with libcurl.
 
 ##### ImageJson
 When [Image](#image) is a URL that returns JSON instead of an image, such as a wallpaper search API, this is the path to the image URL in the response: object keys and array indexes separated by dots, where `*` picks a random array element. For example, `data.0.path` for [Wallhaven](https://wallhaven.cc/help/api) search results. Relative image URLs are resolved against the request URL.

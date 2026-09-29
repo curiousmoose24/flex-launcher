@@ -20,10 +20,10 @@
 #include "debug.h"
 #include "json.h"
 
-// Background images from a URL, like Homepage's background setting, e.g.
-// Image=https://picsum.photos/{width}/{height} for a random photo sized to the screen.
-// With ImageJson, the URL returns JSON (e.g. a Wallhaven search) and ImageJson is the path to
-// the image URL in it. {keywords} is replaced with one of the comma-separated ImageKeywords.
+// Background images from a URL, like Homepage's background setting. With ImageJson, the URL
+// returns JSON (e.g. a Wallhaven search) and ImageJson is the path to the image URL in it.
+// {width} and {height} are replaced with the screen size, and {keywords} with one of the
+// comma-separated ImageKeywords.
 // The last image is cached so it shows immediately at startup; a fresh image is then
 // downloaded in a separate thread and faded in, and again every ImageRefresh minutes.
 
