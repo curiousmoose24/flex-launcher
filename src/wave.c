@@ -222,6 +222,7 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define SPARKLE_DEPTH_CHANCE 0.5f   // Chance that a long-lived sparkle moves towards or away from the viewer
 #define SPARKLE_DEPTH_MIN_LIFE 2.0f // Seconds a sparkle must live to move in depth
 #define SPARKLE_LEAVE_SPEED 0.5f    // Speed of the sparkles that leave the screen, relative to other zooming sparkles
+#define SPARKLE_LEAVE_GROWTH 8.0f   // Final size of a sparkle that approaches while leaving the screen (others double)
 #define SPARKLE_SPEED 0.09375f      // Scales all sparkle motion
 #define SPARKLE_BLUR_TIME 0.035f    // A moving sparkle's streak shows where it was this long ago
 #define SPARKLE_TEXTURE_SIZE 32
@@ -315,14 +316,16 @@ static void spawn_sparkle(Sparkle *sparkle, float seconds)
 
 // A function to get a sparkle's size at an age, relative to its size when born. A sparkle
 // moving in depth travels at a steady speed, so with perspective (size = 1 / distance) one
-// coming closer grows faster as it nears, reaching double size, and one moving away shrinks
+// coming closer grows faster as it nears, reaching double size (eight times for one flying off
+// the screen, which comes much closer), and one moving away shrinks
 // ever more slowly to half size.
 static float sparkle_scale(const Sparkle *sparkle, float age)
 {
     if (sparkle->depth == 0)
         return 1.0f;
     float t = fminf(age / sparkle->shown, 1.0f);
-    float distance = sparkle->depth > 0 ? 1.0f - 0.5f * t : 1.0f + t;
+    float growth = sparkle->leaves ? SPARKLE_LEAVE_GROWTH : 2.0f;
+    float distance = sparkle->depth > 0 ? 1.0f - (1.0f - 1.0f / growth) * t : 1.0f + t;
     return 1.0f / distance;
 }
 
