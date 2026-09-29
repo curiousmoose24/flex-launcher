@@ -217,7 +217,7 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define NUM_SPARKLES 150
 #define SPARKLE_FADE_TIME 0.4f      // Seconds to fade in and out (at most)
 #define SPARKLE_ZOOM_CHANCE 0.10f   // Fraction of sparkles that speed up and whoosh away
-#define SPARKLE_SPEED 0.5f         // Scales all sparkle motion
+#define SPARKLE_SPEED 0.25f        // Scales all sparkle motion
 #define SPARKLE_BLUR_TIME 0.035f    // A moving sparkle's streak shows where it was this long ago
 #define SPARKLE_TEXTURE_SIZE 32
 #define SPARKLE_GLOW_TEXTURE_SIZE 64
