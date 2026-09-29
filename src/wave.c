@@ -217,6 +217,7 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define NUM_SPARKLES 150
 #define SPARKLE_FADE_TIME 0.4f      // Seconds to fade in and out (at most)
 #define SPARKLE_ZOOM_CHANCE 0.10f   // Fraction of sparkles that speed up and whoosh away
+#define SPARKLE_SPEED 0.5f         // Scales all sparkle motion
 #define SPARKLE_BLUR_TIME 0.035f    // A moving sparkle's streak shows where it was this long ago
 #define SPARKLE_TEXTURE_SIZE 32
 #define SPARKLE_GLOW_TEXTURE_SIZE 64
@@ -277,9 +278,9 @@ static void spawn_sparkle(Sparkle *sparkle, float seconds)
         speed = random_float(0.0f, 0.006f);
     else
         speed = 0.01f * expf(random_float(0.0f, 1.8f)); // 0.01-0.06, mostly slow
-    sparkle->vx = direction * speed;
-    sparkle->vy = random_centered() * 0.02f;
-    sparkle->acceleration = sparkle->zoom ? random_float(0.12f, 0.3f) : 0.0f;
+    sparkle->vx = SPARKLE_SPEED * direction * speed;
+    sparkle->vy = SPARKLE_SPEED * random_centered() * 0.02f;
+    sparkle->acceleration = sparkle->zoom ? SPARKLE_SPEED * random_float(0.12f, 0.3f) : 0.0f;
 
     sparkle->size = random_float(0.004f, 0.009f);
     sparkle->brightness = sparkle->zoom ? random_float(0.75f, 1.0f) : random_float(0.5f, 1.0f);
