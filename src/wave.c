@@ -108,11 +108,11 @@ static const Ribbon ribbons[] = {
     {0.62f, 0.07f, 0.9f, 0.25f, 0.0f, 0.090f, 60},
     {0.60f, 0.06f, 1.2f, -0.18f, 1.7f, 0.060f, 45},
     {0.64f, 0.05f, 0.7f, 0.12f, 3.1f, 0.030f, 70},
+    {0.61f, 0.065f, 1.0f, -0.22f, 4.6f, 0.075f, 50},
     // Thin strands of light
     {0.61f, 0.075f, 0.9f, 0.25f, 0.35f, 0.0025f, 140},
     {0.63f, 0.065f, 1.1f, 0.21f, 0.9f, 0.0020f, 120},
-    {0.59f, 0.070f, 0.8f, -0.16f, 2.2f, 0.0020f, 110},
-    {0.65f, 0.060f, 1.3f, 0.19f, 4.0f, 0.0015f, 100}
+    {0.59f, 0.070f, 0.8f, -0.16f, 2.2f, 0.0020f, 110}
 };
 
 // A function to calculate a ribbon's center line at horizontal position u (0-1), in pixels
