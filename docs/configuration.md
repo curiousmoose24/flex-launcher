@@ -251,6 +251,11 @@ When `Mode` is set to "Wave", this setting makes the background dimmer at night 
 
 Default: true
 
+##### WaveSparkles
+If set to `true`, soft specks of light drift along the [Wave](#mode) background's ribbons and twinkle in and out, like the particles of the PlayStation 3 slim's XMB. Most sparkles stay near the ribbons, and each fades out after a few seconds while a new one appears elsewhere. This setting is a boolean "true" or "false".
+
+Default: true
+
 #### Layout
 The settings in this section define the geometric layout of the launcher.
 
@@ -267,11 +272,6 @@ The settings in this section define the geometric layout of the launcher.
 - [IconSize](#iconsize)
 - [IconSpacing](#iconspacing)
 - [VCenter](#vcenter)
-
-##### WaveSparkles
-If set to `true`, soft specks of light drift along the [Wave](#mode) background's ribbons and twinkle in and out, like the particles of the PlayStation 3 slim's XMB. Most sparkles stay near the ribbons, and each fades out after a few seconds while a new one appears elsewhere. This setting is a boolean "true" or "false".
-
-Default: true
 
 ##### Scheme
 The console layout scheme, chosen in the popup of the [:layouts](#layouts) special command. Valid options are:
