@@ -42,7 +42,7 @@ extern Clock *clk;
 #define MAX_ART_URL_CHARS 2048
 #define MAX_ART_BYTES (20 * 1024 * 1024)
 #define ART_TIMEOUT_SECONDS 10L
-#define ART_SCALE 6.0f          // Cover art size, times the text's line height
+#define ART_SCALE 4.2f          // Cover art size, times the text's line height
 #define ART_GAP 0.1f            // Space between the art and the text, times the line height
 
 static SDL_Thread *poll_thread = NULL;
