@@ -333,7 +333,7 @@ typedef struct {
     float focus_scale; // Size of the focused icon relative to IconSize (carousel)
     float focus_position; // Horizontal center of the focused icon, fraction of screen width (carousel)
     Uint8 unfocused_alpha; // Opacity of icons away from focus (carousel)
-    Uint8 focused_brightness; // Brightness of the selected row and column icons (carousel), 255 = unchanged
+    Uint8 focused_brightness; // Brightness of the selected row and column icons and titles (carousel), 255 = unchanged
     bool titles_focused_only;
     bool title_glow; // Soft glow around the title of the selected entry
     SDL_Color title_glow_color; // Alpha is the glow opacity

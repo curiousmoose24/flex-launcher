@@ -316,7 +316,7 @@ The horizontal position of the center of the selected entry, in percent of the s
 Default: 50%
 
 ##### FocusedBrightness
-The brightness of the selected icons in percent: the selected entry in the row, and in `Column` [SubmenuMode](#submenumode) the selected column entry. The brightness blends back to normal as entries scroll out of focus. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+The brightness of the selected icons and their titles in percent: the selected entry in the row, and in `Column` [SubmenuMode](#submenumode) the selected column entry. The brightness blends back to normal as entries scroll out of focus. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
 
 Default: 100%
 
