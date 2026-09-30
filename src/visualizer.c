@@ -39,7 +39,7 @@ extern Geometry geo;
 #define COLUMN_RATE 60.0f      // Spectrogram columns a second
 #define NUM_BARS 64
 #define LINE_SMOOTHING 2       // Bands averaged on each side, for a smooth curve
-#define LINE_WIDTH 0.005f      // Half thickness of the line's glow, fraction of screen height
+#define LINE_WIDTH 0.0025f     // Half thickness of the line's glow, fraction of screen height
 #define BAR_GAP 0.25f          // Gap between bars, relative to the bar width
 #define CAPTURE_COMMAND "parec"
 
@@ -370,8 +370,8 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha)
         float length = sqrtf(dx * dx + dy * dy);
         float nx = -dy / length * half, ny = dx / length * half;
 
-        // A white line; louder parts are brighter
-        SDL_Color center = {0xFF, 0xFF, 0xFF, (Uint8) fminf((float) alpha * (1.2f + 0.8f * levels[b]), 255.0f)};
+        // A white line at the visualizer's opacity
+        SDL_Color center = {0xFF, 0xFF, 0xFF, alpha};
         vertices[b * 3] = (SDL_Vertex) {{xs[b] - nx, ys[b] - ny}, edge, {0.0f, 0.0f}};
         vertices[b * 3 + 1] = (SDL_Vertex) {{xs[b], ys[b]}, center, {0.0f, 0.0f}};
         vertices[b * 3 + 2] = (SDL_Vertex) {{xs[b] + nx, ys[b] + ny}, edge, {0.0f, 0.0f}};
