@@ -20,6 +20,8 @@ set(SOURCES
   json.h
   layouts.c
   layouts.h
+  visualizer.c
+  visualizer.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

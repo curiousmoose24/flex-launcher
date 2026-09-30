@@ -613,6 +613,9 @@ Switch between the `Wave` background and the picture background, and save the ch
 #### :togglesparkles
 Turn the [Wave](#mode) background's sparkles on or off, and save the choice to the [WaveSparkles](#wavesparkles) setting in the `[Background]` section of the config file. When sparkles are turned back on, they reappear gradually. If the entry's icon has an `_off` variant next to it (e.g. `sparkles.svg` and `sparkles_off.svg`), the variant is shown while sparkles are off.
 
+#### :togglevisualizer
+Turn the [audio visualizer](#visualizer) on or off, and save the choice to the `Enabled` setting in the `[Visualizer]` section of the config file. If the entry's icon has an `_off` variant next to it, the variant is shown while the visualizer is off.
+
 #### :layouts
 Open a popup window listing the console layout schemes, with the current [Scheme](#scheme) marked. The popup takes all input while it is open: up and down (or [:up](#up) and [:down](#down)) move the selection, select chooses the highlighted scheme, saves it to the config file and closes the popup, and back, left or Escape (or [:back](#back)) closes it without changes.
 
@@ -849,6 +852,13 @@ Transparent backgrounds can be used to implement animated backgrounds in combina
 
 ### Custom Widgets
 Flex Launcher offers a simple clock widget which can show the current time and date. For more advanced functionality, you can combine a transparent background with a third party widget program. For example, you can have a widget that displays weather, news, etc. in addition to the time. [Rainmeter](https://www.rainmeter.net/) is a popular option on Windows, and [Conky](https://github.com/brndnmtthws/conky) for Linux.
+
+### Visualizer
+An audio visualizer can be drawn over the background, below the menu, showing whatever is playing on the default audio output. It records the output's monitor with `parec` (PulseAudio or PipeWire, Linux only), and pauses while an application launched from the menu is running. Quiet sound is transparent, so only what's playing shows. Settings in the `[Visualizer]` section:
+- `Enabled`: "true" or "false". Can also be switched with [:togglevisualizer](#togglevisualizer). Default: false
+- `Style`: `Spectrogram` scrolls the last 8 seconds from right to left, with low pitches at the bottom and louder sounds brighter. `Bars` shows the current spectrum as bars rising from the bottom. Default: Spectrogram
+- `Opacity`: in percent. Default: 50%
+- `Height`: the height of the visualizer from the bottom of the screen, in percent of the screen height. Default: 100%
 
 ### Sounds
 Navigation sounds play when moving the selection, selecting an entry, and going back. Settings in the `[Sounds]` section:

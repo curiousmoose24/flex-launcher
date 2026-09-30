@@ -16,6 +16,7 @@
 #include "wave.h"
 #include "webimage.h"
 #include "layouts.h"
+#include "visualizer.h"
 #include "util.h"
 #include "debug.h"
 #include "clock.h"
@@ -170,6 +171,10 @@ Config config = {
     .wave_time_of_day                 = DEFAULT_WAVE_TIME_OF_DAY,
     .wave_sparkles                    = DEFAULT_WAVE_SPARKLES,
     .context_entries                  = DEFAULT_CONTEXT_ENTRIES,
+    .visualizer_enabled               = DEFAULT_VISUALIZER_ENABLED,
+    .visualizer_style                 = VISUALIZER_SPECTROGRAM,
+    .visualizer_alpha                 = 128,
+    .visualizer_height                = 1.0f,
     .sounds_enabled                   = DEFAULT_SOUNDS_ENABLED,
     .sound_volume                     = SDL_MIX_MAXVOLUME / 2,
     .sound_paths                      = {NULL},
@@ -388,6 +393,7 @@ static void cleanup()
     quit_web_background();
     quit_layout_popup();
     quit_wave_background();
+    quit_visualizer();
     SDL_WaitThread(Slideshowhread, NULL);
     SDL_WaitThread(clock_thread, NULL);
     
@@ -749,6 +755,8 @@ static bool entry_off(const Entry *entry)
         return !config.sounds_enabled;
     if (!strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES))
         return !config.wave_sparkles;
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_VISUALIZER))
+        return !config.visualizer_enabled;
     if (!strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND))
         return config.background_mode != BACKGROUND_WAVE;
     return false;
@@ -1159,7 +1167,7 @@ static void render_buttons(Menu *menu)
         entry->icon_selected = (entry->icon_selected_path != NULL) ? load_texture_from_file(entry->icon_selected_path) : NULL;
         entry->icon_off = NULL;
         if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS) || !strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND) ||
-        !strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES)) {
+        !strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES) || !strcmp(entry->cmd, SCMD_TOGGLE_VISUALIZER)) {
             char *off_path = suffixed_path(entry->icon_path, OFF_SUFFIX);
             if (off_path != NULL) {
                 entry->icon_off = load_texture_from_file(off_path);
@@ -1368,6 +1376,9 @@ static void draw_screen()
         if (config.background_overlay)
             SDL_RenderCopy(renderer, background_overlay, NULL, NULL);
 
+        // Draw the audio visualizer over the background
+        draw_visualizer();
+
         // Draw scroll indicators (not in carousel mode: the row fills the screen edge to edge)
         if (config.scroll_indicators && !carousel_active() &&
         (current_menu->page*config.max_buttons + (unsigned int) geo.num_buttons) <= (current_menu->num_entries - 1))
@@ -1486,6 +1497,14 @@ static void execute_command(const char *command)
             toggle_background();
         else if (!strcmp(special_command, SCMD_TOGGLE_SPARKLES))
             toggle_sparkles();
+        else if (!strcmp(special_command, SCMD_TOGGLE_VISUALIZER)) {
+            toggle_visualizer();
+            update_toggle_titles();
+            if (config.config_file_path != NULL &&
+            !save_config_setting(config.config_file_path, "Visualizer", SETTING_VISUALIZER_ENABLED,
+                config.visualizer_enabled ? "true" : "false"))
+                log_error("Could not save the visualizer setting to the config file");
+        }
         else if (!strcmp(special_command, SCMD_WALLPAPER)) {
             // Optional keywords, then show the picture background with a new image
             new_web_background(strtok(NULL, ""));
@@ -1797,6 +1816,7 @@ static void update_clock(bool block)
 static inline void pre_launch()
 {
     pause_sounds(true);
+    pause_visualizer(true);
     if (gamepads != NULL)
         disconnect_gamepad(-1, true, false);
 
@@ -1824,6 +1844,7 @@ static inline void post_launch()
         set_draw_color();
     start_fade_in();
     pause_sounds(false);
+    pause_visualizer(false);
 
 #ifdef _WIN32
     SDL_EventState(SDL_SYSWMEVENT, SDL_DISABLE);
@@ -2153,6 +2174,8 @@ int main(int argc, char *argv[])
         log_fatal("Could not load default menu %s", config.default_menu);
 
     play_sound(SOUND_STARTUP);
+
+    update_visualizer_state();
 
     // Execute startup command
     if (config.startup_cmd != NULL)

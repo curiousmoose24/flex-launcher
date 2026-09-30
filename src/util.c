@@ -38,7 +38,8 @@ static const char *mode_settings[][6] = {
     {"24hr", "12hr", "Auto", NULL, NULL},                 // Clock Format
     {"Big", "Little", "Auto", NULL, NULL},                // Date Format
     {"Paged", "Carousel", NULL, NULL, NULL},              // Scroll Mode
-    {"Screen", "Column", NULL, NULL, NULL}                // Submenu Mode
+    {"Screen", "Column", NULL, NULL, NULL},               // Submenu Mode
+    {"Spectrogram", "Bars", NULL, NULL, NULL}             // Visualizer Style
 };
 
 // A function to handle the arguments from the command line
@@ -431,6 +432,20 @@ int config_handler(void *user, const char *section, const char *name, const char
                 }
             }
         }
+    }
+
+    else if (MATCH(section, "Visualizer")) {
+        if (MATCH(name, SETTING_VISUALIZER_ENABLED))
+            convert_bool(value, &config.visualizer_enabled);
+        else if (MATCH(name, SETTING_VISUALIZER_STYLE))
+            parse_mode_setting(MODE_SETTING_VISUALIZER, value, (int*) &config.visualizer_style);
+        else if (MATCH(name, SETTING_VISUALIZER_OPACITY)) {
+            float opacity;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &opacity))
+                config.visualizer_alpha = (Uint8) (opacity * 255.0f + 0.5f);
+        }
+        else if (MATCH(name, SETTING_VISUALIZER_HEIGHT))
+            parse_percent_fraction(value, 0.05f, 1.0f, &config.visualizer_height);
     }
 
     else if (MATCH(section, "Clock")) {

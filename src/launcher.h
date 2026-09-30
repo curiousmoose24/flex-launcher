@@ -51,6 +51,7 @@
 #define SCMD_TOGGLE_SOUNDS ":togglesounds"
 #define SCMD_TOGGLE_BACKGROUND ":togglebackground"
 #define SCMD_TOGGLE_SPARKLES ":togglesparkles"
+#define SCMD_TOGGLE_VISUALIZER ":togglevisualizer"
 #define SCMD_WALLPAPER ":wallpaper"
 #define SCMD_LAYOUTS ":layouts"
 #define SCMD_HOME ":home"
@@ -68,7 +69,8 @@ typedef enum {
     MODE_SETTING_TIME_FORMAT,
     MODE_SETTING_DATE_FORMAT,
     MODE_SETTING_SCROLL,
-    MODE_SETTING_SUBMENU
+    MODE_SETTING_SUBMENU,
+    MODE_SETTING_VISUALIZER
 } ModeSettingType;
 
 typedef enum {
@@ -106,6 +108,11 @@ typedef enum {
     WAVE_COLOR_MONTH,  // WaveColor=Auto: a color for each month
     WAVE_COLOR_SKY     // WaveColor=Sky: sky colors that follow the time of day
 } WaveColorMode;
+
+typedef enum {
+    VISUALIZER_SPECTROGRAM,
+    VISUALIZER_BARS
+} ModeVisualizer;
 
 typedef enum {
     SOUND_MOVE,
@@ -356,6 +363,10 @@ typedef struct {
     bool wave_time_of_day; // Wave background brightness follows the time of day
     bool sounds_enabled;
     int sound_volume; // 0 to SDL_MIX_MAXVOLUME
+    bool visualizer_enabled; // Audio visualizer over the background
+    ModeVisualizer visualizer_style;
+    Uint8 visualizer_alpha;
+    float visualizer_height; // Fraction of the screen height, from the bottom
     char *sound_paths[NUM_SOUNDS]; // NULL: use the default sound
     char *config_file_path; // Kept so :togglesounds can save its state
     bool reset_on_back;

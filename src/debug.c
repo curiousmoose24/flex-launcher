@@ -191,6 +191,10 @@ void debug_settings()
 
     log_debug("======================== Sounds ========================\n");
     DEBUG_BOOL(SETTING_SOUNDS_ENABLED, config.sounds_enabled);
+    log_debug("%-25s %s", "Visualizer:", config.visualizer_enabled ? "true" : "false");
+    DEBUG_MODE(SETTING_VISUALIZER_STYLE, MODE_SETTING_VISUALIZER, config.visualizer_style);
+    log_debug("%-25s %.0f%%", SETTING_VISUALIZER_OPACITY ":", (double) config.visualizer_alpha * 100.0 / 255.0);
+    log_debug("%-25s %.0f%%", SETTING_VISUALIZER_HEIGHT ":", (double) (config.visualizer_height * 100.0f));
     log_debug("%-25s %.0f%%", SETTING_SOUNDS_VOLUME ":", (double) config.sound_volume * 100.0 / SDL_MIX_MAXVOLUME);
     log_debug("%-25s %s", SETTING_SOUND_MOVE ":", config.sound_paths[SOUND_MOVE] ? config.sound_paths[SOUND_MOVE] : "(default)");
     log_debug("%-25s %s", SETTING_SOUND_SELECT ":", config.sound_paths[SOUND_SELECT] ? config.sound_paths[SOUND_SELECT] : "(default)");
