@@ -366,6 +366,7 @@ typedef struct {
     int sound_volume; // 0 to SDL_MIX_MAXVOLUME
     bool visualizer_enabled; // Audio visualizer over the background
     bool now_playing_enabled; // The track a media player is playing, under the clock
+    bool now_playing_album_art; // Cover art beside it
     ModeVisualizer visualizer_style;
     Uint8 visualizer_alpha;
     float visualizer_height; // Fraction of the screen height, from the bottom

@@ -174,6 +174,7 @@ Config config = {
     .context_entries                  = DEFAULT_CONTEXT_ENTRIES,
     .visualizer_enabled               = DEFAULT_VISUALIZER_ENABLED,
     .now_playing_enabled              = DEFAULT_NOW_PLAYING_ENABLED,
+    .now_playing_album_art            = DEFAULT_NOW_PLAYING_ALBUM_ART,
     .visualizer_style                 = VISUALIZER_SPECTROGRAM,
     .visualizer_alpha                 = 128,
     .visualizer_height                = 1.0f,

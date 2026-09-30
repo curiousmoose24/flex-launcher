@@ -437,6 +437,8 @@ int config_handler(void *user, const char *section, const char *name, const char
     else if (MATCH(section, "Now Playing")) {
         if (MATCH(name, SETTING_NOW_PLAYING_ENABLED))
             convert_bool(value, &config.now_playing_enabled);
+        else if (MATCH(name, SETTING_NOW_PLAYING_ALBUM_ART))
+            convert_bool(value, &config.now_playing_album_art);
     }
 
     else if (MATCH(section, "Visualizer")) {
