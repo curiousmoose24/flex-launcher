@@ -333,7 +333,7 @@ static void draw_bars(const SDL_Rect *area, Uint8 alpha)
     SDL_SetRenderDrawBlendMode(renderer, mode);
 }
 
-// A function to draw the spectrum as a single glowing line across the area, like a line graph:
+// A function to draw the spectrum as a single glowing white line across the area, like a line graph:
 // low pitches on the left, rising with loudness from the bottom of the area
 static void draw_line(const SDL_Rect *area, Uint8 alpha)
 {
@@ -347,7 +347,7 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha)
         return;
 
     float half = fmaxf((float) geo.screen_height * LINE_WIDTH, 1.5f);
-    SDL_Color edge = {0xC0, 0xB0, 0xFF, 0};
+    SDL_Color edge = {0xFF, 0xFF, 0xFF, 0};
     static float xs[NUM_BANDS], ys[NUM_BANDS], levels[NUM_BANDS];
     for (int b = 0; b < NUM_BANDS; b++) {
         // Average the neighboring bands for a smooth curve
@@ -370,10 +370,8 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha)
         float length = sqrtf(dx * dx + dy * dy);
         float nx = -dy / length * half, ny = dx / length * half;
 
-        // Louder parts of the line are brighter and whiter
-        Uint32 color = intensity_color(0.4f + 0.6f * levels[b]);
-        SDL_Color center = {(color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF,
-                            (Uint8) fminf((float) alpha * (1.2f + 0.8f * levels[b]), 255.0f)};
+        // A white line; louder parts are brighter
+        SDL_Color center = {0xFF, 0xFF, 0xFF, (Uint8) fminf((float) alpha * (1.2f + 0.8f * levels[b]), 255.0f)};
         vertices[b * 3] = (SDL_Vertex) {{xs[b] - nx, ys[b] - ny}, edge, {0.0f, 0.0f}};
         vertices[b * 3 + 1] = (SDL_Vertex) {{xs[b], ys[b]}, center, {0.0f, 0.0f}};
         vertices[b * 3 + 2] = (SDL_Vertex) {{xs[b] + nx, ys[b] + ny}, edge, {0.0f, 0.0f}};
