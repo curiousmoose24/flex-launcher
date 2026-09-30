@@ -20,6 +20,7 @@ extern Config config;
 extern State state;
 extern SDL_Renderer *renderer;
 extern SDL_Texture *background_texture;
+extern Geometry geo;
 NSVGrasterizer *rasterizer = NULL;
 
 // A function to initalize SVG rasterization
@@ -50,7 +51,7 @@ SDL_Surface *load_next_slideshow_background(Slideshow *slideshow, bool transitio
         (slideshow->i)++;
         if (slideshow->i >= slideshow->num_images)
             slideshow->i = 0;
-        surface = IMG_Load(slideshow->images[slideshow->order[slideshow->i]]);
+        surface = apply_background_filters(IMG_Load(slideshow->images[slideshow->order[slideshow->i]]));
         
         // If the loaded image has no alpha channel (e.g. JPEG), create one 
         // so that we can have transparency for the background transition
@@ -380,6 +381,215 @@ SDL_Texture *render_text_texture(const char *text, TextInfo *info, SDL_Rect *rec
 {
     SDL_Surface *surface = render_text(text, info, rect, text_height);
     return load_texture(surface);
+}
+
+// A function for one horizontal or vertical box blur pass over a float buffer.
+// Pixels beyond the edges repeat the edge pixel, so blurred edges don't darken.
+static void box_blur(const float *in, float *out, int w, int h, int radius, bool horizontal)
+{
+    int lines = horizontal ? h : w;
+    int length = horizontal ? w : h;
+    int step = horizontal ? 1 : w;
+    float scale = 1.0f / (float) (2 * radius + 1);
+    for (int line = 0; line < lines; line++) {
+        const float *src = in + (horizontal ? line * w : line);
+        float *dst = out + (horizontal ? line * w : line);
+        float sum = 0.0f;
+        for (int i = -radius; i <= radius; i++)
+            sum += src[(i < 0 ? 0 : (i >= length ? length - 1 : i)) * step];
+        for (int i = 0; i < length; i++) {
+            dst[i * step] = sum * scale;
+            int remove = i - radius, add = i + radius + 1;
+            sum -= src[(remove < 0 ? 0 : remove) * step];
+            sum += src[(add >= length ? length - 1 : add) * step];
+        }
+    }
+}
+
+// A function to create a soft glow texture from rendered text: the text's shape, blurred
+// and tinted with the glow color. The texture is larger than the text by *padding on each side.
+SDL_Texture *render_glow_texture(SDL_Surface *text, SDL_Color color, int *padding)
+{
+    SDL_Surface *source = SDL_ConvertSurfaceFormat(text, SDL_PIXELFORMAT_ARGB8888, 0);
+    if (source == NULL)
+        return NULL;
+
+    int radius = source->h / 8 > 2 ? source->h / 8 : 2;
+    int pad = radius * 3;
+    int w = source->w + 2 * pad;
+    int h = source->h + 2 * pad;
+    float *alpha = calloc((size_t) (w * h), sizeof(float));
+    float *tmp = calloc((size_t) (w * h), sizeof(float));
+
+    SDL_LockSurface(source);
+    for (int y = 0; y < source->h; y++) {
+        const Uint32 *row = (const Uint32*) ((const Uint8*) source->pixels + y * source->pitch);
+        for (int x = 0; x < source->w; x++)
+            alpha[(y + pad) * w + x + pad] = (float) (row[x] >> 24) / 255.0f;
+    }
+    SDL_UnlockSurface(source);
+    SDL_FreeSurface(source);
+
+    // Three box blur passes approximate a Gaussian blur
+    for (int pass = 0; pass < 3; pass++) {
+        box_blur(alpha, tmp, w, h, radius, true);
+        box_blur(tmp, alpha, w, h, radius, false);
+    }
+
+    SDL_Surface *glow = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (glow != NULL) {
+        SDL_LockSurface(glow);
+        for (int y = 0; y < h; y++) {
+            Uint32 *row = (Uint32*) ((Uint8*) glow->pixels + y * glow->pitch);
+            for (int x = 0; x < w; x++) {
+                // Boost the blurred alpha so the glow stays visible away from the letters
+                float a = alpha[y * w + x] * 2.5f;
+                Uint32 a8 = (Uint32) ((a > 1.0f ? 1.0f : a) * 255.0f + 0.5f);
+                row[x] = (a8 << 24) | ((Uint32) color.r << 16) | ((Uint32) color.g << 8) | (Uint32) color.b;
+            }
+        }
+        SDL_UnlockSurface(glow);
+    }
+    free(alpha);
+    free(tmp);
+    *padding = pad;
+    return load_texture(glow);
+}
+
+// A function to fit a background image to the screen like a wallpaper set to "fill": it's
+// cropped to the screen's shape around its center, and scaled down if it's larger than the
+// screen, which also saves memory and speeds up the filters. Smaller images aren't scaled up
+// here; the renderer stretches them to the screen.
+static SDL_Surface *fit_to_screen(SDL_Surface *surface)
+{
+    int sw = geo.screen_width, sh = geo.screen_height;
+    if (sw <= 0 || sh <= 0)
+        return surface;
+    SDL_Rect crop = {0, 0, surface->w, surface->h};
+    if ((long long) surface->w * sh > (long long) surface->h * sw) { // Wider than the screen
+        crop.w = (int) ((long long) surface->h * sw / sh);
+        crop.x = (surface->w - crop.w) / 2;
+    }
+    else { // Taller than the screen
+        crop.h = (int) ((long long) surface->w * sh / sw);
+        crop.y = (surface->h - crop.h) / 2;
+    }
+    int w = crop.w > sw ? sw : crop.w;
+    int h = crop.h > sh ? sh : crop.h;
+    if (crop.w == surface->w && crop.h == surface->h && w == surface->w && h == surface->h)
+        return surface;
+    if (w < 1 || h < 1)
+        return surface;
+
+    SDL_Surface *source = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_Surface *fitted = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (source == NULL || fitted == NULL) {
+        SDL_FreeSurface(source);
+        SDL_FreeSurface(fitted);
+        return surface;
+    }
+#if SDL_VERSION_ATLEAST(2, 0, 16)
+    int error = SDL_SoftStretchLinear(source, &crop, fitted, NULL);
+#else
+    int error = SDL_BlitScaled(source, &crop, fitted, NULL);
+#endif
+    SDL_FreeSurface(source);
+    if (error < 0) {
+        SDL_FreeSurface(fitted);
+        return surface;
+    }
+    SDL_FreeSurface(surface);
+    return fitted;
+}
+
+// A function to apply the background image filters (ImageBlur, ImageBrightness, ImageSaturation
+// and ImageOpacity, like Homepage's background settings). Takes ownership of the surface and returns
+// the filtered surface, fitted to the screen first. Blurred images are returned at a reduced size; they are stretched to the
+// screen when drawn anyway.
+SDL_Surface *apply_background_filters(SDL_Surface *surface)
+{
+    if (surface == NULL)
+        return NULL;
+    surface = fit_to_screen(surface);
+    bool blur = config.image_blur > 0.0f;
+    if (!blur && config.image_brightness == 1.0f && config.image_saturation == 1.0f && config.image_opacity == 1.0f)
+        return surface;
+
+    SDL_Surface *image = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_FreeSurface(surface);
+    if (image == NULL)
+        return NULL;
+
+    if (blur) {
+        // Blur a quarter-size copy: much faster, and invisible after blurring
+        int scale = 4;
+        SDL_Surface *small = SDL_CreateRGBSurfaceWithFormat(0, image->w / scale > 0 ? image->w / scale : 1,
+                                 image->h / scale > 0 ? image->h / scale : 1, 32, SDL_PIXELFORMAT_ARGB8888);
+        if (small != NULL) {
+#if SDL_VERSION_ATLEAST(2, 0, 16)
+            SDL_SoftStretchLinear(image, NULL, small, NULL);
+#else
+            SDL_BlitScaled(image, NULL, small, NULL);
+#endif
+            SDL_FreeSurface(image);
+            image = small;
+
+            // Radius in pixels of the reduced image, from CSS pixels at 1920 px screen width
+            int radius = (int) (config.image_blur * (float) geo.screen_width / 1920.0f / (float) scale + 0.5f);
+            if (radius < 1)
+                radius = 1;
+            int w = image->w, h = image->h;
+            float *channels[3], *tmp = malloc(sizeof(float) * (size_t) (w * h));
+            SDL_LockSurface(image);
+            for (int c = 0; c < 3; c++) {
+                channels[c] = malloc(sizeof(float) * (size_t) (w * h));
+                for (int y = 0; y < h; y++) {
+                    const Uint32 *row = (const Uint32*) ((const Uint8*) image->pixels + y * image->pitch);
+                    for (int x = 0; x < w; x++)
+                        channels[c][y * w + x] = (float) ((row[x] >> (16 - 8 * c)) & 0xFF);
+                }
+                for (int pass = 0; pass < 3; pass++) {
+                    box_blur(channels[c], tmp, w, h, radius, true);
+                    box_blur(tmp, channels[c], w, h, radius, false);
+                }
+            }
+            for (int y = 0; y < h; y++) {
+                Uint32 *row = (Uint32*) ((Uint8*) image->pixels + y * image->pitch);
+                for (int x = 0; x < w; x++) {
+                    Uint32 rgb = 0;
+                    for (int c = 0; c < 3; c++)
+                        rgb |= (Uint32) (channels[c][y * w + x] + 0.5f) << (16 - 8 * c);
+                    row[x] = 0xFF000000u | rgb;
+                }
+            }
+            SDL_UnlockSurface(image);
+            for (int c = 0; c < 3; c++)
+                free(channels[c]);
+            free(tmp);
+        }
+    }
+
+    // Per-pixel filters: saturation, brightness, then opacity over the background color
+    SDL_Color bg = config.background_color;
+    SDL_LockSurface(image);
+    for (int y = 0; y < image->h; y++) {
+        Uint32 *row = (Uint32*) ((Uint8*) image->pixels + y * image->pitch);
+        for (int x = 0; x < image->w; x++) {
+            float rgb[3] = {(float) ((row[x] >> 16) & 0xFF), (float) ((row[x] >> 8) & 0xFF), (float) (row[x] & 0xFF)};
+            float gray = 0.2126f * rgb[0] + 0.7152f * rgb[1] + 0.0722f * rgb[2];
+            float under[3] = {(float) bg.r, (float) bg.g, (float) bg.b};
+            Uint32 out = 0xFF000000u;
+            for (int c = 0; c < 3; c++) {
+                float v = (gray + (rgb[c] - gray) * config.image_saturation) * config.image_brightness;
+                v = under[c] + (v - under[c]) * config.image_opacity;
+                v = v < 0.0f ? 0.0f : (v > 255.0f ? 255.0f : v);
+                out |= (Uint32) (v + 0.5f) << (16 - 8 * c);
+            }
+            row[x] = out;
+        }
+    }
+    SDL_UnlockSurface(image);
+    return image;
 }
 
 // A function to load a font from a file

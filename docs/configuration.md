@@ -30,6 +30,8 @@ Key1=value
 Key2=value
 ...
 ```
+An example PlayStation 3 XMB-style configuration, `xmb.ini`, is installed next to the default config file (e.g. `/usr/share/flex-launcher/xmb.ini`). It sets up a carousel of categories (Video, Game, Network, Wallpaper, UI and System) with column submenus, the `Wave` background, sparkles, the visualizer and the now playing flyout, using the white XMB icons in `assets/icons/xmb`. The UI category holds the [:togglevisualizer](#togglevisualizer), [:togglenowplaying](#togglenowplaying), [:togglesounds](#togglesounds) and [:layouts](#layouts) entries. Copy it to your config file location and change the menu commands to your applications.
+
 A line can be commented out by using the # character at the beginning of the line, which will cause the line to be ignored by the program. In-line comments are not allowable. Here are a few things to note about the configuration settings for Flex Launcher:
 - All keys and values are case sensitive.
 - Full UTF-8 character set is supported for titles.
@@ -55,6 +57,7 @@ The settings in this section control the general behavior of the launcher.
 - [VSync](#vsync)
 - [FPSLimit](#fpslimit)
 - [OnLaunch](#onlaunch)
+- [FadeTime](#fadetime)
 - [ResetOnBack](#resetonback)
 - [MouseSelect](#mouseselect)
 - [InhibitOSScreensaver](#inhibitosscreensaver)
@@ -85,8 +88,15 @@ Defines the action that Flex Launcher will take upon the launch of an applicatio
 
 Default: Blank
 
+##### FadeTime
+The duration in milliseconds of a fade to black when an application is launched (with [OnLaunch](#onlaunch) set to "Blank"), and of a fade in from black when the launcher starts and when an application exits. A value of 0 disables fading.
+
+Default: 0
+
 ##### WrapEntries
 Defines whether the highlight will wrap to the other side of the screen after reaching its leftmost or rightmost position. This setting is a boolean "true" or "false".
+
+In `Carousel` [ScrollMode](#scrollmode), "true" makes the row scroll endlessly, and "false" makes it stop at the first and last entries. A wrapping carousel is only used for menus with more entries than [MaxButtons](#maxbuttons); a non-wrapping carousel is used for all menus.
 
 Default: false
 
@@ -117,6 +127,13 @@ The settings in this section control what Flex Launcher will display in the back
 - [Mode](#mode)
 - [Color](#color)
 - [Image](#image)
+- [ImageJson](#imagejson)
+- [ImageKeywords](#imagekeywords)
+- [ImageRefresh](#imagerefresh)
+- [ImageBlur](#imageblur)
+- [ImageBrightness](#imagebrightness)
+- [ImageSaturation](#imagesaturation)
+- [ImageOpacity](#imageopacity)
 - [SlideshowDirectory](#slideshowdirectory)
 - [SlideshowImageDuration](#slideshowimageduration)
 - [SlideshowTransitionTime](#slideshowtransitiontime)
@@ -124,13 +141,18 @@ The settings in this section control what Flex Launcher will display in the back
 - [Overlay](#overlay)
 - [OverlayColor](#overlaycolor)
 - [OverlayOpacity](#overlayopacity)
+- [WaveColor](#wavecolor)
+- [WaveTimeOfDay](#wavetimeofday)
+- [WaveSparkles](#wavesparkles)
+- [ContextEntries](#contextentries)
 
 ##### Mode
-Defines what mode the background will be. Possible values: "Color", "Image", and "Slideshow"
+Defines what mode the background will be. Possible values: "Color", "Image", "Slideshow", "Transparent", and "Wave"
 - Color: The background will be a solid color.
 - Image: The background will be an image.
 - Slideshow: The background will be a series of images displayed in random order, with a fading transition between each image.
 - Transparent: The background will be transparent. This is an advanced feature; users should read the [Transparent Backgrounds](#transparent-backgrounds) section before proceeding.
+- Wave: An animated background similar to the PlayStation 3's XMB: a color gradient with soft, glowing ribbons drifting across the screen. See [WaveColor](#wavecolor) and [WaveTimeOfDay](#wavetimeofday). Requires SDL 2.0.18 or newer; with older versions the background falls back to "Color".
 
 Default: Color
 
@@ -141,6 +163,50 @@ Default: #000000 (Black)
 
 ##### Image
 When `Mode` is set to "Image", this setting defines the image to be displayed in the background. The value should be a path to an image file. If the image is not the same resolution as your desktop, it will be stretched accordingly.
+
+The image can also be a URL (http:// or https://), like the background of the Homepage dashboard, e.g. a random wallpaper from a [Wallhaven](https://wallhaven.cc) search (see [ImageJson](#imagejson)). `{width}` and `{height}` are replaced with the screen size. The image is downloaded in the background and faded in, and the last image is cached (in `~/.cache/flex-launcher/wallpaper`) so it shows immediately at the next startup. Loading images from URLs requires Flex Launcher to be built with libcurl.
+
+##### ImageJson
+When [Image](#image) is a URL that returns JSON instead of an image, such as a wallpaper search API, this is the path to the image URL in the response: object keys and array indexes separated by dots, where `*` picks a random array element. For example, `data.0.path` for [Wallhaven](https://wallhaven.cc/help/api) search results. Relative image URLs are resolved against the request URL.
+
+Example, a random safe-for-work 16:9 wallpaper at least the size of the screen, matching [ImageKeywords](#imagekeywords):
+```
+Image=https://wallhaven.cc/api/v1/search?q={keywords}&categories=100&purity=100&atleast={width}x{height}&ratios=16x9&sorting=random
+ImageJson=data.0.path
+ImageKeywords=nature, mountains, space
+```
+
+Default: (none)
+
+##### ImageKeywords
+Comma-separated keywords (e.g. wallpaper genres or tags) for the `{keywords}` placeholder in the [Image](#image) URL. For each new image, one of the keywords is picked at random. The [:wallpaper](#wallpaper) special command can change the keywords from a menu.
+
+Default: (none)
+
+##### ImageRefresh
+When [Image](#image) is a URL, download a new image this often, in minutes. The new image fades in over [SlideshowTransitionTime](#slideshowtransitiontime). A value of 0 downloads a new image only at startup.
+
+Default: 0
+
+##### ImageBlur
+Blurs the background image, using the same sizes as the Homepage dashboard: "none", "sm", "md", "lg", "xl", "2xl" or "3xl". Applies to `Image` and `Slideshow` backgrounds.
+
+Default: none
+
+##### ImageBrightness
+The brightness of the background image in percent, e.g. 50% for half as bright. Like the Homepage dashboard, the value can be written without the % sign. Applies to `Image` and `Slideshow` backgrounds.
+
+Default: 100%
+
+##### ImageSaturation
+The color saturation of the background image in percent; 0% is black and white. Applies to `Image` and `Slideshow` backgrounds.
+
+Default: 100%
+
+##### ImageOpacity
+The opacity of the background image in percent, over the background [Color](#color). Applies to `Image` and `Slideshow` backgrounds.
+
+Default: 100%
 
 ##### SlideshowDirectory
 When `Mode` is set to "Slideshow", this setting defines the directory (folder) which contains the images to display in the background. The value should be a path to a directory on your filesystem. The number of images that may be scanned from the directory is limited to 250.
@@ -175,18 +241,110 @@ Defines the opacity of the background overlay. Must be a percent value.
 
 Default: 50%
 
+##### WaveColor
+When `Mode` is set to "Wave", this setting defines the color of the background. Possible values:
+- A color in hex format, e.g. `#2D6FD6`.
+- "Auto": the color changes each month, like the PS3.
+- "Sky": sky colors that follow the time of day: deep navy at night, a warm horizon at dawn, blues during the day, orange at sunset and purple at dusk. The colors blend smoothly as the day goes on. [WaveTimeOfDay](#wavetimeofday) only dims the ribbons in this mode, since the sky colors already get darker at night.
+
+Default: Auto
+
+##### WaveTimeOfDay
+When `Mode` is set to "Wave", this setting makes the background dimmer at night and brighter during the day. This setting is a boolean "true" or "false".
+
+Default: true
+
+##### WaveSparkles
+If set to `true`, soft specks of light scattered around the [Wave](#mode) background's ribbons drift, twinkle and fade, like the particles of the PlayStation 3 slim's XMB. They are born near the ribbons but move on their own, mostly drifting slowly sideways and living only a second or two, while some speed up and whoosh away. Some of the longer-lived sparkles move towards or away from the viewer, growing to double or shrinking to half their size. This setting is a boolean "true" or "false".
+
+Default: true
+
+##### ContextEntries
+If set to `true`, menu entries that only apply to one kind of background are shown only while that background is on: entries with the [:togglesparkles](#togglesparkles) command only with the `Wave` background, and entries with the [:wallpaper](#wallpaper) command only with the picture background. Entries appear and disappear when the background is switched with [:togglebackground](#togglebackground). This setting is a boolean "true" or "false".
+
+Default: false
+
 #### Layout
 The settings in this section define the geometric layout of the launcher.
 
+- [Scheme](#scheme)
 - [MaxButtons](#maxbuttons)
+- [ScrollMode](#scrollmode)
+- [ScrollTime](#scrolltime)
+- [FocusScale](#focusscale)
+- [FocusPosition](#focusposition)
+- [UnfocusedOpacity](#unfocusedopacity)
+- [FocusedBrightness](#focusedbrightness)
+- [SubmenuMode](#submenumode)
+- [ColumnIconSize](#columniconsize)
+- [ColumnFocusScale](#columnfocusscale)
 - [IconSize](#iconsize)
 - [IconSpacing](#iconspacing)
 - [VCenter](#vcenter)
+
+##### Scheme
+The console layout scheme, chosen in the popup of the [:layouts](#layouts) special command. Valid options are:
+- `PS3`: The PlayStation 3's XrossMediaBar, the layout built from the other settings in this section.
+
+Choosing a scheme in the popup saves it to this setting.
+
+Default: PS3
 
 ##### MaxButtons
 The maximum number of buttons that can be displayed on the screen. If a menu has more entries than this value, it will be split into multiple pages. A value of 3-5 is sensible for a typical TV size and viewing distance.
 
 Default: 4
+
+##### ScrollMode
+Defines how the menu scrolls when it has more entries than [MaxButtons](#maxbuttons). Valid options are:
+- `Paged`: The menu is split into pages of MaxButtons entries.
+- `Carousel`: The highlight stays at a fixed position and the row of entries scrolls one entry at a time with a slide animation, wrapping around endlessly. Entries fill the screen from edge to edge, so the neighboring entries peek in from both sides. Menus with MaxButtons or fewer entries are laid out as in `Paged` mode.
+
+Default: Paged
+
+##### ScrollTime
+The duration of the Carousel slide animation, in milliseconds. A value of 0 disables the animation. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 150
+
+##### FocusScale
+The size of the selected entry's icon, in percent of [IconSize](#iconsize). Values above 100% enlarge the selected icon, and the neighboring icons move outward to make room. The size animates smoothly while scrolling. Valid range is 100%-300%. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 100%
+
+##### FocusPosition
+The horizontal position of the center of the selected entry, in percent of the screen width. A value of 50% keeps the selection in the center of the screen; a value around 33% places it left of center. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 50%
+
+##### FocusedBrightness
+The brightness of the selected icons and their titles in percent: the selected entry in the row, and in `Column` [SubmenuMode](#submenumode) the selected column entry. The brightness blends back to normal as entries scroll out of focus. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 100%
+
+##### UnfocusedOpacity
+The opacity of icons that are not selected, in percent. The opacity fades smoothly as entries scroll into and out of focus. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 100%
+
+##### SubmenuMode
+Defines how submenus are shown. Valid options are:
+- `Screen`: Selecting an entry with a `:submenu` command replaces the menu with the submenu.
+- `Column`: A cross layout similar to the PlayStation 3's XrossMediaBar. The entries of the selected entry's submenu are shown as a vertical column below it. Use up and down (the arrow keys, or the [:up](#up) and [:down](#down) commands) to move within the column, and select to launch the highlighted column entry. The selected column entry is shown just below the menu row, and the entries before it move up above the row. Each column remembers its selection. Entries without a submenu are launched directly.
+
+`Column` only applies when [ScrollMode](#scrollmode) is `Carousel`. A non-wrapping carousel ([WrapEntries](#wrapentries)=false) suits it best, since the menu row usually holds only a few categories.
+
+Default: Screen
+
+##### ColumnIconSize
+The size of the icons in a column, in percent of [IconSize](#iconsize). Only applies when [SubmenuMode](#submenumode) is `Column`.
+
+Default: 60%
+
+##### ColumnFocusScale
+The size of the selected icon in a column, in percent of [ColumnIconSize](#columniconsize). The entries below it move down to make room. Valid range is 100%-300%. By default, the selected column icon grows by half as much as [FocusScale](#focusscale) (e.g. 125% when FocusScale is 150%). Only applies when [SubmenuMode](#submenumode) is `Column`.
+
+Default: Automatic
 
 ##### IconSize
 The width and height of icons on the screen in pixels. If an icon is not the same resolution, it will be stretched accordingly.
@@ -215,6 +373,10 @@ The settings in this section affect the application titles that display below th
 - [Opacity](#opacity)
 - [OversizeMode](#oversizemode)
 - [Padding](#padding)
+- [FocusedOnly](#focusedonly)
+- [Glow](#glow)
+- [GlowColor](#glowcolor)
+- [GlowOpacity](#glowopacity)
 
 ##### Enabled
 Defines whether or not application titles are enabled. This setting is a boolean "true" or "false".
@@ -263,6 +425,26 @@ Default: Truncate
 Defines the vertical spacing between an icon and its title, in pixels.
 
 Default: 20
+
+##### FocusedOnly
+If set to `true`, only the title of the selected entry is shown. In `Carousel` [ScrollMode](#scrollmode), the title fades in and out as entries scroll into and out of focus.
+
+Default: false
+
+##### Glow
+If set to `true`, a soft glow is drawn around the title of the highlighted entry. In `Column` [SubmenuMode](#submenumode), the highlighted column entry's title glows. The glow fades in and out with the focus animation. This setting is a boolean "true" or "false".
+
+Default: false
+
+##### GlowColor
+The color of the title glow, in hex format.
+
+Default: #FFFFFF
+
+##### GlowOpacity
+The opacity of the title glow, in percent.
+
+Default: 60%
 
 #### Highlight
 The settings in this section control the menu highlight.
@@ -384,6 +566,12 @@ The Selected Icon Override feature allows the user to define a different icon fo
 
 For example, if the icon path for an entry is defined as `C:\icons\kodi.png`, then the program will check for the existence of `C:\icons\kodi_selected.png` and, if it exists, this icon will be shown when the entry is selected instead of the default. This feature allows the user to implement custom highlight effects such as glowing, color changes, etc.
 
+### Toggle Titles
+An entry with a [:togglesounds](#togglesounds), [:togglebackground](#togglebackground) or [:togglesparkles](#togglesparkles) command can have a second title for its off state, written after a `|`: sounds or sparkles off, or the picture background showing instead of the `Wave` background. The title switches along with the entry's `_off` icon. For example, `Entry1=Photos|Wave;background.svg;:togglebackground` reads "Photos" while the `Wave` background is showing and "Wave" while the picture background is.
+
+### Default Entry
+A menu section can set `DefaultEntry=N` to start on its Nth entry (counting the entries that are shown) instead of the one selected last. In `Column` [SubmenuMode](#submenumode), the column starts on that entry every time it's switched to, so the entries before it sit above the menu row. For example, `DefaultEntry=2` puts the first entry above the row and selects the second.
+
 ### Special Commands
 Special commands are commands that are internal to Flex Launcher and begin with a colon. The following is a list of special commands:
 
@@ -417,6 +605,36 @@ Move the highlight cursor left.
 
 #### :right
 Move the highlight cursor right.
+
+#### :wallpaper
+Download a new background image now, when [Image](#image) is a URL. Optional keywords after the command replace [ImageKeywords](#imagekeywords) and are saved to the config file, so menu entries can pick a wallpaper genre, e.g. `Entry1=Space;space.svg;:wallpaper space` or `:wallpaper nature, mountains`. If the `Wave` background is showing, the launcher switches to the picture background.
+
+#### :togglekeyword
+Add a keyword to [ImageKeywords](#imagekeywords), or remove it if it's already there, and save them to the config file, so menu entries can turn wallpaper categories on and off, e.g. `Entry1=Space;space.svg;:togglekeyword space`. Each new image is picked from one of the keywords that are on, at random. The last keyword can't be removed. Keywords are matched ignoring case. If the entry's icon has an `_off` variant next to it, the variant is shown while the keyword is off.
+
+#### :togglebackground
+Switch between the `Wave` background and the picture background, and save the choice to the `Mode` setting in the `[Background]` section of the config file. The picture background is `Image` or `Slideshow`: the mode the launcher started in, or, when it started in `Wave` mode, `Image` if the [Image](#image) setting is set, otherwise `Slideshow` if [SlideshowDirectory](#slideshowdirectory) is set. The screen fades in from black when switching. If the entry's icon has an `_off` variant next to it (e.g. `background.svg` and `background_off.svg`), the variant is shown while the picture background is on.
+
+#### :togglesparkles
+Turn the [Wave](#mode) background's sparkles on or off, and save the choice to the [WaveSparkles](#wavesparkles) setting in the `[Background]` section of the config file. When sparkles are turned back on, they reappear gradually. If the entry's icon has an `_off` variant next to it (e.g. `sparkles.svg` and `sparkles_off.svg`), the variant is shown while sparkles are off.
+
+#### :togglevisualizer
+Turn the [audio visualizer](#visualizer) on or off, and save the choice to the `Enabled` setting in the `[Visualizer]` section of the config file. If the entry's icon has an `_off` variant next to it, the variant is shown while the visualizer is off.
+
+#### :togglenowplaying
+Turn the [now playing](#now-playing) flyout on or off, and save the choice to the `Enabled` setting in the `[Now Playing]` section of the config file. Turned off, the flyout slides out; turned back on, it slides in with the track that's playing. If the entry's icon has an `_off` variant next to it, the variant is shown while the flyout is off.
+
+#### :layouts
+Open a popup window listing the console layout schemes, with the current [Scheme](#scheme) marked. The popup takes all input while it is open: up and down (or [:up](#up) and [:down](#down)) move the selection, select chooses the highlighted scheme, saves it to the config file and closes the popup, and back, left or Escape (or [:back](#back)) closes it without changes.
+
+#### :togglesounds
+Turn navigation sounds on or off, and save the choice to the `Enabled` setting in the `[Sounds]` section of the config file. Turning sounds on plays the select chime, and turning them off plays the falling "off" chime. If the entry's icon has an `_off` variant next to it (e.g. `sound.svg` and `sound_off.svg`), the variant is shown while sounds are off.
+
+#### :up
+Move the selection up in a column. Only used when [SubmenuMode](#submenumode) is `Column`.
+
+#### :down
+Move the selection down in a column. Only used when [SubmenuMode](#submenumode) is `Column`.
 
 #### :select
 Press enter on the current selection. This special command is only available as a gamepad or hotkey command, it is forbidden for menu entries.
@@ -642,3 +860,24 @@ Transparent backgrounds can be used to implement animated backgrounds in combina
 
 ### Custom Widgets
 Flex Launcher offers a simple clock widget which can show the current time and date. For more advanced functionality, you can combine a transparent background with a third party widget program. For example, you can have a widget that displays weather, news, etc. in addition to the time. [Rainmeter](https://www.rainmeter.net/) is a popular option on Windows, and [Conky](https://github.com/brndnmtthws/conky) for Linux.
+
+### Now Playing
+A "now playing" flyout can show the title and artist of the track a media player is playing, on a line under the [clock](#clock) in the clock's style (font, size, color, shadows, opacity and alignment). It slides in from the edge of the screen when a track starts playing, fades to the next track, and slides back out when playback stops or pauses. Players that support MPRIS (most Linux music and video players, and browsers) are asked every 2 seconds with `busctl` (Linux only). Long text is truncated. Settings in the `[Now Playing]` section:
+- `Enabled`: "true" or "false". Needs the clock to be enabled. Can also be switched with [:togglenowplaying](#togglenowplaying). Default: false
+- `AlbumArt`: "true" or "false". Shows the track's cover art under the text, right-justified with it, at the clock's opacity, cropped to a square 4.2 times the height of the line. The art comes from the player (a file, or a web address, which needs the launcher to be built with libcurl). Covers that a sandboxed player (e.g. a Flatpak) saved in its own `/tmp` are found through the player's process when possible. Default: true
+
+### Visualizer
+An audio visualizer can be drawn over the background, below the menu, showing whatever is playing on the default audio output. It records the output's monitor with `parec` (PulseAudio or PipeWire, Linux only), and pauses while an application launched from the menu is running. Quiet sound is transparent, so only what's playing shows. Settings in the `[Visualizer]` section:
+- `Enabled`: "true" or "false". Can also be switched with [:togglevisualizer](#togglevisualizer). Default: false
+- `Style`: `Spectrogram` scrolls the last 8 seconds from right to left, with low pitches at the bottom and louder sounds brighter. `Bars` shows the current spectrum as bars rising from the bottom. `Line` shows it as a single glowing white line across the screen, like a line graph. When the sound drops, the line falls under gravity. When the sound ends, the line keeps its last shape and slides down off the bottom of the visualizer over 2 seconds, speeding up as it goes, and it rises from the bottom again when sound returns. Default: Spectrogram
+- `Opacity`: in percent. Default: 50%
+- `Height`: the height of the visualizer from the bottom of the screen, in percent of the screen height. Default: 100%
+
+### Sounds
+Navigation sounds play when moving the selection, selecting an entry, and going back. Settings in the `[Sounds]` section:
+- `Enabled`: "true" or "false". Default: false
+- `Volume`: in percent. Default: 50%
+- `Move`, `Select`, `Back`, `Off`: optional paths to WAV files to replace the default sounds in `assets/sounds` (generated by `tools/generate_sounds.py`). `Off` plays when sounds are turned off with [:togglesounds](#togglesounds).
+- `Startup`, `Confirm`, `Error`: optional paths to WAV files for sounds that have no default. `Startup` plays once when the launcher starts, and keeps playing underneath navigation sounds. `Confirm` plays when a setting is chosen, such as a scheme in the [:layouts](#layouts) popup (without it, `Select` plays). `Error` plays when an action fails, such as an application that can't be launched or a [:togglebackground](#togglebackground) with no picture background to switch to.
+
+WAV files are converted to the audio device's format when they are loaded. A navigation sound interrupts the navigation sound that is still playing.

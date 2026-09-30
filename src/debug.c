@@ -8,6 +8,7 @@
 #include <launcher_config.h>
 #include "util.h"
 #include "debug.h"
+#include "layouts.h"
 #include "platform/platform.h"
 #ifdef __unix__
 #include "platform/unix.h"
@@ -103,6 +104,7 @@ void debug_settings()
     DEBUG_INT(SETTING_APPLICATION_TIMEOUT, config.application_timeout / 1000);
     DEBUG_MODE(SETTING_ON_LAUNCH, MODE_SETTING_ON_LAUNCH, config.on_launch);
     DEBUG_BOOL(SETTING_WRAP_ENTRIES, config.wrap_entries);
+    DEBUG_INT(SETTING_FADE_TIME, (int) config.fade_time);
     DEBUG_BOOL(SETTING_RESET_ON_BACK, config.reset_on_back);
     DEBUG_BOOL(SETTING_MOUSE_SELECT, config.mouse_select);
     DEBUG_BOOL(SETTING_INHIBIT_OS_SCREENSAVER, config.inhibit_os_screensaver);
@@ -113,6 +115,22 @@ void debug_settings()
     log_debug("===================== Background =======================\n");
     DEBUG_MODE(SETTING_BACKGROUND_MODE, MODE_SETTING_BACKGROUND, config.background_mode);
     DEBUG_COLOR(SETTING_BACKGROUND_COLOR, config.background_color);
+    if (config.wave_color_mode == WAVE_COLOR_MONTH)
+        log_debug("%-25s %s", SETTING_WAVE_COLOR ":", "Auto");
+    else if (config.wave_color_mode == WAVE_COLOR_SKY)
+        log_debug("%-25s %s", SETTING_WAVE_COLOR ":", "Sky");
+    else
+        DEBUG_COLOR(SETTING_WAVE_COLOR, config.wave_color);
+    DEBUG_BOOL(SETTING_WAVE_TIME_OF_DAY, config.wave_time_of_day);
+    DEBUG_BOOL(SETTING_WAVE_SPARKLES, config.wave_sparkles);
+    DEBUG_BOOL(SETTING_CONTEXT_ENTRIES, config.context_entries);
+    DEBUG_INT(SETTING_IMAGE_REFRESH, (int) (config.image_refresh / 60000));
+    log_debug("%-25s %s", SETTING_IMAGE_JSON ":", config.image_json ? config.image_json : "(none)");
+    log_debug("%-25s %s", SETTING_IMAGE_KEYWORDS ":", config.image_keywords ? config.image_keywords : "(none)");
+    log_debug("%-25s %.0f px", SETTING_IMAGE_BLUR ":", (double) config.image_blur);
+    log_debug("%-25s %.0f%%", SETTING_IMAGE_BRIGHTNESS ":", (double) (config.image_brightness * 100.0f));
+    log_debug("%-25s %.0f%%", SETTING_IMAGE_SATURATION ":", (double) (config.image_saturation * 100.0f));
+    log_debug("%-25s %.0f%%", SETTING_IMAGE_OPACITY ":", (double) (config.image_opacity * 100.0f));
     DEBUG_STR(SETTING_BACKGROUND_IMAGE, config.background_image);
     DEBUG_STR(SETTING_SLIDESHOW_DIRECTORY, config.slideshow_directory);
     DEBUG_INT(SETTING_SLIDESHOW_IMAGE_DURATION, config.slideshow_image_duration / 1000);
@@ -123,6 +141,19 @@ void debug_settings()
 
     log_debug("======================= Layout =========================\n");
     DEBUG_INT(SETTING_MAX_BUTTONS, config.max_buttons);
+    DEBUG_MODE(SETTING_SCROLL_MODE, MODE_SETTING_SCROLL, config.scroll_mode);
+    DEBUG_INT(SETTING_SCROLL_TIME, (int) config.scroll_time);
+    log_debug("%-25s %.0f%%", SETTING_FOCUS_SCALE ":", (double) (config.focus_scale * 100.0f));
+    log_debug("%-25s %.0f%%", SETTING_FOCUS_POSITION ":", (double) (config.focus_position * 100.0f));
+    log_debug("%-25s %.0f%%", SETTING_UNFOCUSED_OPACITY ":", (double) config.unfocused_alpha * 100.0 / 255.0);
+    log_debug("%-25s %.0f%%", SETTING_FOCUSED_BRIGHTNESS ":", (double) config.focused_brightness * 100.0 / 255.0);
+    DEBUG_STR(SETTING_LAYOUT_SCHEME, layout_id(config.layout_scheme));
+    DEBUG_MODE(SETTING_SUBMENU_MODE, MODE_SETTING_SUBMENU, config.submenu_mode);
+    log_debug("%-25s %.0f%%", SETTING_COLUMN_ICON_SIZE ":", (double) (config.column_icon_scale * 100.0f));
+    if (config.column_focus_scale > 0.0f)
+        log_debug("%-25s %.0f%%", SETTING_COLUMN_FOCUS_SCALE ":", (double) (config.column_focus_scale * 100.0f));
+    else
+        log_debug("%-25s %s", SETTING_COLUMN_FOCUS_SCALE ":", "Auto");
     DEBUG_INT(SETTING_ICON_SIZE, config.icon_size);
     DEBUG_INT(SETTING_ICON_SPACING, config.icon_spacing);
     DEBUG_STR(SETTING_VCENTER, config.vcenter[0] != '\0' ? config.vcenter : "50%");
@@ -137,6 +168,9 @@ void debug_settings()
     DEBUG_COLOR(SETTING_TITLE_SHADOW_COLOR, config.title_shadow_color);
     DEBUG_MODE(SETTING_TITLE_OVERSIZE_MODE, MODE_SETTING_OVERSIZE, config.title_oversize_mode);
     DEBUG_INT(SETTING_TITLE_PADDING, config.title_padding);
+    DEBUG_BOOL(SETTING_TITLE_FOCUSED_ONLY, config.titles_focused_only);
+    DEBUG_BOOL(SETTING_TITLE_GLOW, config.title_glow);
+    DEBUG_COLOR(SETTING_TITLE_GLOW_COLOR, config.title_glow_color);
     log_debug("");
 
     log_debug("====================== Highlight =======================\n");
@@ -153,6 +187,24 @@ void debug_settings()
     DEBUG_COLOR(SETTING_SCROLL_INDICATOR_FILL_COLOR, config.scroll_indicator_fill_color);
     DEBUG_INT(SETTING_SCROLL_INDICATOR_OUTLINE_SIZE, config.scroll_indicator_outline_size);
     DEBUG_COLOR(SETTING_SCROLL_INDICATOR_OUTLINE_COLOR, config.scroll_indicator_outline_color);
+    log_debug("");
+
+    log_debug("======================== Sounds ========================\n");
+    DEBUG_BOOL(SETTING_SOUNDS_ENABLED, config.sounds_enabled);
+    log_debug("%-25s %s", "Visualizer:", config.visualizer_enabled ? "true" : "false");
+    log_debug("%-25s %s", "Now Playing:", config.now_playing_enabled ? "true" : "false");
+    log_debug("%-25s %s", "Album Art:", config.now_playing_album_art ? "true" : "false");
+    DEBUG_MODE(SETTING_VISUALIZER_STYLE, MODE_SETTING_VISUALIZER, config.visualizer_style);
+    log_debug("%-25s %.0f%%", SETTING_VISUALIZER_OPACITY ":", (double) config.visualizer_alpha * 100.0 / 255.0);
+    log_debug("%-25s %.0f%%", SETTING_VISUALIZER_HEIGHT ":", (double) (config.visualizer_height * 100.0f));
+    log_debug("%-25s %.0f%%", SETTING_SOUNDS_VOLUME ":", (double) config.sound_volume * 100.0 / SDL_MIX_MAXVOLUME);
+    log_debug("%-25s %s", SETTING_SOUND_MOVE ":", config.sound_paths[SOUND_MOVE] ? config.sound_paths[SOUND_MOVE] : "(default)");
+    log_debug("%-25s %s", SETTING_SOUND_SELECT ":", config.sound_paths[SOUND_SELECT] ? config.sound_paths[SOUND_SELECT] : "(default)");
+    log_debug("%-25s %s", SETTING_SOUND_BACK ":", config.sound_paths[SOUND_BACK] ? config.sound_paths[SOUND_BACK] : "(default)");
+    log_debug("%-25s %s", SETTING_SOUND_OFF ":", config.sound_paths[SOUND_OFF] ? config.sound_paths[SOUND_OFF] : "(default)");
+    log_debug("%-25s %s", SETTING_SOUND_STARTUP ":", config.sound_paths[SOUND_STARTUP] ? config.sound_paths[SOUND_STARTUP] : "(none)");
+    log_debug("%-25s %s", SETTING_SOUND_CONFIRM ":", config.sound_paths[SOUND_CONFIRM] ? config.sound_paths[SOUND_CONFIRM] : "(none)");
+    log_debug("%-25s %s", SETTING_SOUND_ERROR ":", config.sound_paths[SOUND_ERROR] ? config.sound_paths[SOUND_ERROR] : "(none)");
     log_debug("");
 
     log_debug("======================== Clock =========================\n");

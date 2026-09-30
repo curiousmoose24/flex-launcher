@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <stdbool.h>
 #include <time.h>
@@ -11,6 +12,12 @@
 #include "launcher.h"
 #include <launcher_config.h>
 #include "image.h"
+#include "sound.h"
+#include "wave.h"
+#include "webimage.h"
+#include "layouts.h"
+#include "visualizer.h"
+#include "nowplaying.h"
 #include "util.h"
 #include "debug.h"
 #include "clock.h"
@@ -29,12 +36,37 @@ static void update_clock(bool block);
 static void init_slideshow(void);
 static void init_screensaver(void);
 static void calculate_button_geometry(Entry *entry, int buttons);
+static bool carousel_active(void);
+static Entry *next_entry_wrapped(Entry *entry);
+static Entry *previous_entry_wrapped(Entry *entry);
+static int carousel_offset(void);
+static void carousel_layout(void);
+static void carousel_move(Direction direction);
+static void draw_carousel_buttons(void);
+static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha);
+static SDL_Texture *entry_icon(Entry *entry, bool selected);
+static void draw_title_glow(Entry *entry, const SDL_Rect *text_rect, float strength);
+static void load_picture_background(void);
+static void toggle_background(void);
+static void toggle_sparkles(void);
+static void init_entry_lists(void);
+static void filter_menus(void);
+static bool column_active(void);
+static void update_column(void);
+static float column_offset(void);
+static void column_move(bool down);
+static void draw_column(float category_center, float category_closeness);
+static Entry *selected_entry(void);
+static void move_up(void);
+static void move_down(void);
 static void render_buttons(Menu *menu);
 static void move_left(void);
 static void move_right(void);
 static void load_submenu(const char *submenu);
 static void load_back_menu(Menu *menu);
 static void draw_screen(void);
+static void start_fade_in(void);
+static void draw_black_overlay(Uint8 alpha);
 static void handle_keypress(SDL_Keysym *key);
 static void execute_command(const char *command);
 static void poll_gamepad(void);
@@ -114,6 +146,42 @@ Config config = {
     .scroll_indicator_opacity[0]      = '\0',
     .title_oversize_mode              = OVERSIZE_TRUNCATE,
     .wrap_entries                     = DEFAULT_WRAP_ENTRIES,
+    .scroll_mode                      = SCROLL_MODE_PAGED,
+    .scroll_time                      = DEFAULT_SCROLL_TIME,
+    .focus_scale                      = 1.0f,
+    .focus_position                   = 0.5f,
+    .unfocused_alpha                  = 0xFF,
+    .focused_brightness               = 0xFF,
+    .titles_focused_only              = DEFAULT_TITLE_FOCUSED_ONLY,
+    .title_glow                       = DEFAULT_TITLE_GLOW,
+    .title_glow_color                 = {0xFF, 0xFF, 0xFF, 0x99},
+    .submenu_mode                     = SUBMENU_MODE_SCREEN,
+    .layout_scheme                    = 0,
+    .column_icon_scale                = 0.6f,
+    .column_focus_scale               = 0.0f,
+    .fade_time                        = DEFAULT_FADE_TIME,
+    .wave_color_mode                  = WAVE_COLOR_MONTH,
+    .image_refresh                    = 0,
+    .image_json                       = NULL,
+    .image_keywords                   = NULL,
+    .image_blur                       = 0.0f,
+    .image_brightness                 = 1.0f,
+    .image_saturation                 = 1.0f,
+    .image_opacity                    = 1.0f,
+    .wave_color                       = {0x2D, 0x6F, 0xD6, 0xFF},
+    .wave_time_of_day                 = DEFAULT_WAVE_TIME_OF_DAY,
+    .wave_sparkles                    = DEFAULT_WAVE_SPARKLES,
+    .context_entries                  = DEFAULT_CONTEXT_ENTRIES,
+    .visualizer_enabled               = DEFAULT_VISUALIZER_ENABLED,
+    .now_playing_enabled              = DEFAULT_NOW_PLAYING_ENABLED,
+    .now_playing_album_art            = DEFAULT_NOW_PLAYING_ALBUM_ART,
+    .visualizer_style                 = VISUALIZER_SPECTROGRAM,
+    .visualizer_alpha                 = 128,
+    .visualizer_height                = 1.0f,
+    .sounds_enabled                   = DEFAULT_SOUNDS_ENABLED,
+    .sound_volume                     = SDL_MIX_MAXVOLUME / 2,
+    .sound_paths                      = {NULL},
+    .config_file_path                 = NULL,
     .reset_on_back                    = DEFAULT_RESET_ON_BACK,
     .mouse_select                     = DEFAULT_MOUSE_SELECT,
     .inhibit_os_screensaver           = DEFAULT_INHIBIT_OS_SCREENSAVER,
@@ -207,6 +275,8 @@ static void init_sdl()
         log_fatal("Could not initialize SDL\n%s", SDL_GetError());
 
     SDL_GetDesktopDisplayMode(0, &display_mode);
+    if (display_mode.refresh_rate <= 0) // Unknown to some video drivers
+        display_mode.refresh_rate = 60;
     geo.screen_width = display_mode.w;
     geo.screen_height = display_mode.h;
     refresh_period = 1000 / (Uint32) display_mode.refresh_rate;
@@ -276,8 +346,8 @@ static void init_sdl_image()
 void set_draw_color()
 {
     SDL_Color *color = NULL;
-    if (config.background_mode == BACKGROUND_COLOR)
-        color = &config.background_color;
+    if (config.background_mode != BACKGROUND_TRANSPARENT)
+        color = &config.background_color; // Also shown behind images until they have loaded
     else if (config.background_mode == BACKGROUND_TRANSPARENT)
         color = &config.chroma_key_color;
 
@@ -323,6 +393,11 @@ static void init_sdl_ttf()
 static void cleanup()
 {
     // Wait until all threads have completed
+    quit_web_background();
+    quit_layout_popup();
+    quit_wave_background();
+    quit_visualizer();
+    quit_now_playing();
     SDL_WaitThread(Slideshowhread, NULL);
     SDL_WaitThread(clock_thread, NULL);
     
@@ -337,12 +412,12 @@ static void cleanup()
     }
 
     // Quit subsystems
+    quit_sounds();
     SDL_Quit();
     IMG_Quit();
     TTF_Quit();
     quit_svg();
-    if (config.background_mode == BACKGROUND_SLIDESHOW)
-        quit_slideshow();
+    quit_slideshow();
 
     // Close log file if open
     if (log_file != NULL)
@@ -358,6 +433,9 @@ static void cleanup()
     free(config.gamepad_mappings_file);
     free(config.startup_cmd);
     free(config.quit_cmd);
+    free(config.config_file_path);
+    free(config.image_json);
+    free(config.image_keywords);
     free(highlight);
     free(scroll);
     free(screensaver);
@@ -370,14 +448,15 @@ static void cleanup()
     Menu *tmp_menu = NULL;
     for (size_t i = 0; i < config.num_menus; i++) {
         free(menu->name);
-        entry = menu->first_entry;
-        for(size_t j = 0; j < menu->num_entries; j++) {
+        entry = menu->all_entries;
+        while (entry != NULL) {
             free(entry->title);
+            free(entry->title_off);
             free(entry->icon_path);
             free(entry->icon_selected_path);
             free(entry->cmd);
             tmp_entry = entry;
-            entry = entry->next;
+            entry = entry->all_next;
             free(tmp_entry);
         }
         tmp_menu = menu;
@@ -413,22 +492,41 @@ static void handle_keypress(SDL_Keysym *key)
     if (config.debug)
         log_debug("Key %s (#%X) detected", SDL_GetKeyName(key->sym), key->sym);
 
+    // The layout popup takes all input while it is open
+    if (layout_popup_active()) {
+        if (key->sym == SDLK_UP)
+            layout_popup_command(SCMD_UP);
+        else if (key->sym == SDLK_DOWN)
+            layout_popup_command(SCMD_DOWN);
+        else if (key->sym == SDLK_RETURN)
+            layout_popup_command(SCMD_SELECT);
+        else if (key->sym == SDLK_BACKSPACE || key->sym == SDLK_ESCAPE || key->sym == SDLK_LEFT)
+            layout_popup_command(SCMD_BACK);
+        return;
+    }
+
     // Check default keys
     if (key->sym == SDLK_LEFT)
         move_left();
     else if (key->sym == SDLK_RIGHT)
         move_right();
+    else if (key->sym == SDLK_UP)
+        move_up();
+    else if (key->sym == SDLK_DOWN)
+        move_down();
     else if (key->sym == SDLK_RETURN) {
+        Entry *entry = selected_entry();
         log_debug("Selected Entry:\n"
             "Title: %s\n"
             "Icon Path: %s\n"
             "Command: %s", 
-            current_entry->title, 
-            current_entry->icon_path, 
-            current_entry->cmd
+            entry->title, 
+            entry->icon_path, 
+            entry->cmd
         );
         
-        execute_command(current_entry->cmd);
+        play_sound(SOUND_SELECT);
+        execute_command(entry->cmd);
     }
     else if (key->sym == SDLK_BACKSPACE)
         load_back_menu(current_menu);
@@ -447,12 +545,17 @@ static void handle_keypress(SDL_Keysym *key)
 // A function to quit the slideshow mode in case of error or program exit
 void quit_slideshow()
 {
+    // The slideshow may not be initialized yet if the program exits early (e.g. SDL init failure)
+    if (slideshow == NULL)
+        return;
+
     // Free allocated image paths
     for (int i = 0; i < slideshow->num_images; i++)
         free(slideshow->images[i]);
     free(slideshow->images);
     free(slideshow->order);
     free(slideshow);
+    slideshow = NULL;
 }
 
 // A function to initialize the slideshow background mode
@@ -563,6 +666,428 @@ static void resume_slideshow()
     ticks.slideshow_load = ticks.main;
 }
 
+// Carousel animation state: the row is drawn shifted by an offset that eases to 0
+static int carousel_offset_start = 0;
+static Uint32 carousel_anim_start = 0;
+
+// Carousel mode applies to all menus when it doesn't wrap. A wrapping carousel
+// only applies to menus with more entries than fit on screen, so that entries
+// are not repeated on screen.
+static bool carousel_active()
+{
+    return config.scroll_mode == SCROLL_MODE_CAROUSEL &&
+           (!config.wrap_entries || current_menu->num_entries > config.max_buttons);
+}
+
+// Get the next entry in the current menu, wrapping around to the first
+static Entry *next_entry_wrapped(Entry *entry)
+{
+    return entry->next != NULL ? entry->next : current_menu->first_entry;
+}
+
+// Get the previous entry in the current menu, wrapping around to the last
+static Entry *previous_entry_wrapped(Entry *entry)
+{
+    if (entry->previous != NULL)
+        return entry->previous;
+    return advance_entries(current_menu->first_entry, (int) current_menu->num_entries - 1, DIRECTION_RIGHT);
+}
+
+// Get the current horizontal offset of the carousel scroll animation (ease-out)
+static int carousel_offset()
+{
+    if (carousel_offset_start == 0 || config.scroll_time == 0)
+        return 0;
+    Uint32 elapsed = ticks.main - carousel_anim_start;
+    if (elapsed >= config.scroll_time) {
+        carousel_offset_start = 0;
+        return 0;
+    }
+    float remaining = 1.0f - (float) elapsed / (float) config.scroll_time;
+    return (int) ((float) carousel_offset_start * remaining * remaining);
+}
+
+// Lay out the carousel so the selected entry is in the focus slot
+static void carousel_layout()
+{
+    unsigned int center = (config.max_buttons - 1) / 2;
+    Entry *root = current_entry;
+    for (unsigned int i = 0; i < center; i++)
+        root = previous_entry_wrapped(root);
+    current_menu->root_entry = root;
+    current_menu->highlight_position = center;
+    current_menu->page = 0;
+    calculate_button_geometry(root, (int) config.max_buttons);
+
+    // The highlight sits at the focus position, which may be off center
+    if (config.highlight) {
+        int focus_left = (int) ((float) geo.screen_width * config.focus_position) - config.icon_size / 2;
+        highlight->rect.x = focus_left - config.highlight_hpadding;
+        highlight->rect.y = current_entry->icon_rect.y - config.highlight_vpadding;
+    }
+    update_column();
+}
+
+// Scroll the carousel one entry left or right
+static void carousel_move(Direction direction)
+{
+    // Continue from the current animation offset so rapid presses stay smooth
+    if (!config.wrap_entries &&
+    ((direction == DIRECTION_RIGHT && current_entry->next == NULL) ||
+    (direction == DIRECTION_LEFT && current_entry->previous == NULL)))
+        return;
+
+    int offset = carousel_offset();
+    if (direction == DIRECTION_RIGHT) {
+        current_entry = next_entry_wrapped(current_entry);
+        offset += geo.x_advance;
+    }
+    else {
+        current_entry = previous_entry_wrapped(current_entry);
+        offset -= geo.x_advance;
+    }
+    carousel_layout();
+    carousel_offset_start = offset;
+    carousel_anim_start = ticks.main;
+}
+
+// A function to get the keyword of a :togglekeyword entry, or NULL for other entries
+static const char *toggle_keyword_arg(const char *cmd)
+{
+    size_t length = strlen(SCMD_TOGGLE_KEYWORD);
+    if (strncmp(cmd, SCMD_TOGGLE_KEYWORD, length) || cmd[length] != ' ')
+        return NULL;
+    return cmd + length + 1;
+}
+
+// A function to check whether a toggle entry is in its off state: sounds or sparkles off,
+// or the picture background showing instead of the Wave background
+static bool entry_off(const Entry *entry)
+{
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS))
+        return !config.sounds_enabled;
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES))
+        return !config.wave_sparkles;
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_VISUALIZER))
+        return !config.visualizer_enabled;
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_NOW_PLAYING))
+        return !config.now_playing_enabled;
+    const char *keyword = toggle_keyword_arg(entry->cmd);
+    if (keyword != NULL)
+        return !has_keyword(keyword);
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND))
+        return config.background_mode != BACKGROUND_WAVE;
+    return false;
+}
+
+// A function to show the title that matches each toggle entry's state
+static void update_toggle_titles()
+{
+    if (!config.titles_enabled)
+        return;
+    for (Menu *menu = config.first_menu; menu != NULL; menu = menu->next) {
+        if (!menu->rendered)
+            continue;
+        for (Entry *entry = menu->all_entries; entry != NULL; entry = entry->all_next) {
+            if (entry->title_off == NULL || entry->showing_off_title == entry_off(entry))
+                continue;
+            SDL_Texture *texture = entry->title_texture;
+            SDL_Texture *glow = entry->title_glow;
+            int padding = entry->title_glow_padding;
+            SDL_Rect rect = entry->text_rect;
+            entry->title_texture = entry->other_title_texture;
+            entry->title_glow = entry->other_title_glow;
+            entry->title_glow_padding = entry->other_title_glow_padding;
+            entry->text_rect = entry->other_text_rect;
+            entry->text_rect.x = rect.x + (rect.w - entry->text_rect.w) / 2; // Keep it centered
+            entry->text_rect.y = rect.y;
+            entry->other_title_texture = texture;
+            entry->other_title_glow = glow;
+            entry->other_title_glow_padding = padding;
+            entry->other_text_rect = rect;
+            entry->showing_off_title = !entry->showing_off_title;
+        }
+    }
+}
+
+// Get the icon to draw for an entry: the "off" icon of a toggle entry while it's in its off
+// state, otherwise the selected icon if available
+static SDL_Texture *entry_icon(Entry *entry, bool selected)
+{
+    if (entry->icon_off != NULL && entry_off(entry))
+        return entry->icon_off;
+    if (selected && entry->icon_selected != NULL)
+        return entry->icon_selected;
+    return entry->icon;
+}
+
+// Draw the glow behind a title; strength (0-1) scales the configured glow opacity
+static void draw_title_glow(Entry *entry, const SDL_Rect *text_rect, float strength)
+{
+    if (entry->title_glow == NULL || strength <= 0.0f)
+        return;
+    int w, h;
+    SDL_QueryTexture(entry->title_glow, NULL, NULL, &w, &h);
+    SDL_Rect glow_rect = {
+        .x = text_rect->x - entry->title_glow_padding,
+        .y = text_rect->y - entry->title_glow_padding,
+        .w = w,
+        .h = h
+    };
+    render_copy_alpha(entry->title_glow, &glow_rect, (Uint8) ((float) config.title_glow_color.a * fminf(strength, 1.0f) + 0.5f));
+}
+
+// Draw an icon or title with a temporary opacity, dimmed towards FocusedBrightness as it nears
+// the focus (closeness 1 = selected)
+static void render_focused(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha, float closeness)
+{
+    Uint8 brightness = (Uint8) (255.0f - (float) (0xFF - config.focused_brightness) * closeness + 0.5f);
+    if (brightness < 0xFF)
+        SDL_SetTextureColorMod(texture, brightness, brightness, brightness);
+    render_copy_alpha(texture, rect, alpha);
+    if (brightness < 0xFF)
+        SDL_SetTextureColorMod(texture, 0xFF, 0xFF, 0xFF);
+}
+
+// Draw a texture with a temporary opacity
+static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha)
+{
+    if (alpha == 0)
+        return;
+    if (alpha < 0xFF) {
+        SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureAlphaMod(texture, alpha);
+    }
+    SDL_RenderCopy(renderer, texture, NULL, rect);
+    if (alpha < 0xFF)
+        SDL_SetTextureAlphaMod(texture, 0xFF);
+}
+
+// Draw the carousel buttons, filling the screen edge to edge.
+// Size, opacity and title visibility follow each entry's distance from the focus
+// position, so they animate smoothly while the row scrolls.
+static void draw_carousel_buttons()
+{
+    int offset = carousel_offset();
+    float focus_center = (float) geo.screen_width * config.focus_position;
+    float half_growth = (config.focus_scale - 1.0f) * (float) config.icon_size / 2.0f;
+    int reach = geo.screen_width / geo.x_advance + 2;
+
+    // Start from the leftmost entry that can be on screen
+    Entry *entry = current_entry;
+    int k = 0;
+    while (k > -reach) {
+        Entry *previous = config.wrap_entries ? previous_entry_wrapped(entry) : entry->previous;
+        if (previous == NULL)
+            break;
+        entry = previous;
+        k--;
+    }
+
+    float focused_center = focus_center;
+    float focused_closeness = 0.0f;
+    for (; entry != NULL && k <= reach; k++, entry = config.wrap_entries ? next_entry_wrapped(entry) : entry->next) {
+        // Distance from the focus position in slots (fractional while scrolling)
+        float distance = (float) (k*geo.x_advance + offset) / (float) geo.x_advance;
+        float clamped_distance = fminf(fabsf(distance), 1.0f);
+        float closeness = 1.0f - clamped_distance;
+
+        // Neighbors move outward to make room for the enlarged focused icon
+        float center = focus_center + (float) (k*geo.x_advance + offset) +
+                       (distance < 0.0f ? -clamped_distance : clamped_distance) * half_growth;
+        int size = (int) ((float) config.icon_size * (1.0f + (config.focus_scale - 1.0f) * closeness) + 0.5f);
+        SDL_Rect icon_rect = {
+            .x = (int) center - size / 2,
+            .y = geo.y_margin + (config.icon_size - size) / 2,
+            .w = size,
+            .h = size
+        };
+        if (k == 0) {
+            focused_center = center;
+            focused_closeness = closeness;
+        }
+        if (icon_rect.x + icon_rect.w <= 0 || icon_rect.x >= geo.screen_width)
+            continue;
+
+        Uint8 alpha = (Uint8) ((float) config.unfocused_alpha + (float) (0xFF - config.unfocused_alpha) * closeness + 0.5f);
+        SDL_Texture *icon = entry_icon(entry, entry == current_entry);
+        render_focused(icon, &icon_rect, alpha, closeness);
+
+        if (config.titles_enabled) {
+            Uint8 title_alpha = config.titles_focused_only ? (Uint8) (255.0f * closeness + 0.5f) : alpha;
+            SDL_Rect text_rect = entry->text_rect;
+            text_rect.x = (int) center - text_rect.w / 2;
+            text_rect.y = icon_rect.y + size + entry->title_offset + config.title_padding;
+            if (entry == current_entry && !column_active())
+                draw_title_glow(entry, &text_rect, closeness);
+            render_focused(entry->title_texture, &text_rect, title_alpha, closeness);
+        }
+    }
+    draw_column(focused_center, focused_closeness);
+}
+
+// Column state: the submenu of the selected entry, shown vertically below it (SubmenuMode=Column)
+static Menu *column_menu = NULL;
+static Entry *column_entry = NULL;
+static Menu *focused_column_menu = NULL; // The column last switched to (not cleared when the menu is laid out again)
+static float column_offset_start = 0.0f;
+static Uint32 column_anim_start = 0;
+
+static bool column_active()
+{
+    return column_menu != NULL && column_entry != NULL &&
+           config.submenu_mode == SUBMENU_MODE_COLUMN && carousel_active();
+}
+
+// Set the column to the submenu of the selected entry, if it opens one
+static void update_column()
+{
+    column_menu = NULL;
+    column_entry = NULL;
+    column_offset_start = 0.0f;
+    if (config.submenu_mode != SUBMENU_MODE_COLUMN || !carousel_active())
+        return;
+
+    const char *cmd = current_entry->cmd;
+    size_t length = strlen(SCMD_SUBMENU);
+    if (strncmp(cmd, SCMD_SUBMENU, length) != 0 || cmd[length] != ' ')
+        return;
+    Menu *menu = get_menu(cmd + length + 1);
+    if (menu == NULL || menu == current_menu || menu->num_entries == 0) {
+        focused_column_menu = NULL;
+        return;
+    }
+    if (menu->rendered == false)
+        render_buttons(menu);
+
+    // Each column remembers its selected entry, unless it has a DefaultEntry to start on
+    // whenever it's switched to (laying out the same column again keeps the selection)
+    column_menu = menu;
+    column_entry = menu->last_selected_entry != NULL ? menu->last_selected_entry : menu->first_entry;
+    if (menu->default_entry > 0 && menu != focused_column_menu) {
+        column_entry = menu->first_entry;
+        for (int i = 1; i < menu->default_entry && column_entry->next != NULL; i++)
+            column_entry = column_entry->next;
+        menu->last_selected_entry = column_entry;
+    }
+    focused_column_menu = menu;
+}
+
+// Get the current offset of the column scroll animation, in entries (ease-out)
+static float column_offset()
+{
+    if (column_offset_start == 0.0f || config.scroll_time == 0)
+        return 0.0f;
+    Uint32 elapsed = ticks.main - column_anim_start;
+    if (elapsed >= config.scroll_time) {
+        column_offset_start = 0.0f;
+        return 0.0f;
+    }
+    float remaining = 1.0f - (float) elapsed / (float) config.scroll_time;
+    return column_offset_start * remaining * remaining;
+}
+
+// Move the column selection up or down (the column does not wrap)
+static void column_move(bool down)
+{
+    Entry *target = down ? column_entry->next : column_entry->previous;
+    if (target == NULL)
+        return;
+    float offset = column_offset();
+    column_entry = target;
+    column_menu->last_selected_entry = target;
+    column_offset_start = offset + (down ? -1.0f : 1.0f);
+    column_anim_start = ticks.main;
+    play_sound(SOUND_MOVE);
+}
+
+// Draw the column of the focused entry. The selected column entry sits just below
+// the row; entries before it move up above the row, like the XMB.
+static void draw_column(float category_center, float category_closeness)
+{
+    if (!column_active() || category_closeness <= 0.0f)
+        return;
+
+    int item_size = (int) ((float) config.icon_size * config.column_icon_scale + 0.5f);
+    int gap = item_size / 4;
+    int item_advance = item_size + gap;
+    int row_middle = geo.y_margin + config.icon_size / 2;
+    int category_half = (int) ((float) config.icon_size * config.focus_scale) / 2;
+    float below_start = (float) (row_middle + category_half + gap +
+                        (config.titles_enabled ? config.title_padding + geo.font_height : 0));
+    float above_start = (float) (row_middle - category_half - gap - item_size);
+
+    // Size of the selected column icon (automatic: half of the row's FocusScale growth)
+    float focus_scale = config.column_focus_scale > 0.0f ? config.column_focus_scale :
+                        1.0f + (config.focus_scale - 1.0f) * 0.5f;
+    float half_growth = (focus_scale - 1.0f) * (float) item_size / 2.0f;
+
+    // Icon centers: the enlarged selected entry sits just below the row, the entries after it
+    // move down to make room for it, and the entries before it stack up above the row
+    float below_center = below_start + (float) item_size / 2.0f + half_growth;
+    float above_center = above_start + (float) item_size / 2.0f;
+
+    int selected = 0;
+    for (Entry *e = column_menu->first_entry; e != column_entry; e = e->next)
+        selected++;
+    float position = (float) selected + column_offset();
+
+    int i = 0;
+    for (Entry *entry = column_menu->first_entry; entry != NULL; entry = entry->next, i++) {
+        // Position relative to the selection (fractional while scrolling)
+        float f = (float) i - position;
+        float center_y;
+        if (f >= 0.0f)
+            center_y = below_center + f * (float) item_advance + fminf(f, 1.0f) * half_growth;
+        else if (f <= -1.0f)
+            center_y = above_center + (f + 1.0f) * (float) item_advance;
+        else
+            center_y = below_center - f * (above_center - below_center);
+
+        float closeness = 1.0f - fminf(fabsf(f), 1.0f);
+        int size = (int) ((float) item_size * (1.0f + (focus_scale - 1.0f) * closeness) + 0.5f);
+        if (center_y + (float) size / 2.0f < 0.0f || center_y - (float) size / 2.0f > (float) geo.screen_height)
+            continue;
+        SDL_Rect icon_rect = {
+            .x = (int) category_center - size / 2,
+            .y = (int) center_y - size / 2,
+            .w = size,
+            .h = size
+        };
+        Uint8 alpha = (Uint8) (((float) config.unfocused_alpha + (float) (0xFF - config.unfocused_alpha) * closeness) *
+                               category_closeness + 0.5f);
+        render_focused(entry_icon(entry, false), &icon_rect, alpha, closeness * category_closeness);
+
+        // Column titles are shown to the right of the icons
+        if (config.titles_enabled) {
+            SDL_Rect text_rect = entry->text_rect;
+            text_rect.x = icon_rect.x + size + gap;
+            text_rect.y = icon_rect.y + (size - text_rect.h) / 2;
+            draw_title_glow(entry, &text_rect, closeness * category_closeness);
+            render_focused(entry->title_texture, &text_rect, alpha, closeness * category_closeness);
+        }
+    }
+}
+
+// Get the entry that should be executed on select
+static Entry *selected_entry()
+{
+    return column_active() ? column_entry : current_entry;
+}
+
+// Move the selection up or down (only used by the column)
+static void move_up()
+{
+    if (column_active())
+        column_move(false);
+}
+
+static void move_down()
+{
+    if (column_active())
+        column_move(true);
+}
+
 // A function to load a menu
 static int load_menu(Menu *menu, bool set_back_menu, bool reset_position)
 {
@@ -573,6 +1098,7 @@ static int load_menu(Menu *menu, bool set_back_menu, bool reset_position)
     Menu *previous_menu = current_menu;
 
     current_menu = menu;
+    column_menu = NULL;
     log_debug("Loading menu '%s'", current_menu->name);
 
     // Return error if the menu doesn't contain entires
@@ -590,7 +1116,8 @@ static int load_menu(Menu *menu, bool set_back_menu, bool reset_position)
     if (set_back_menu)
         current_menu->back = previous_menu;
 
-    if (reset_position) {
+    // Start from the first entry if there's no remembered one (e.g. it was hidden by ContextEntries)
+    if (reset_position || current_menu->last_selected_entry == NULL) {
         current_entry = current_menu->first_entry;
         current_menu->root_entry = current_entry;
         current_menu->highlight_position = 0;
@@ -598,6 +1125,12 @@ static int load_menu(Menu *menu, bool set_back_menu, bool reset_position)
     }
     else
         current_entry = current_menu->last_selected_entry;
+
+    if (carousel_active()) {
+        carousel_offset_start = 0;
+        carousel_layout();
+        return 0;
+    }
 
     buttons = current_menu->num_entries - (current_menu->page)*config.max_buttons;
     if (buttons > config.max_buttons)
@@ -638,7 +1171,7 @@ static void calculate_button_geometry(Entry *entry, int buttons)
                                  (entry->icon_rect.w - entry->text_rect.w) / 2;
             entry->text_rect.y = entry->icon_rect.y + config.icon_size + entry->title_offset + 
                                  config.title_padding;
-            entry = entry->next;
+            entry = next_entry_wrapped(entry);
     }
 }
 
@@ -647,21 +1180,54 @@ static void render_buttons(Menu *menu)
 {
     Entry *entry;
     int h;
-    for (entry = menu->first_entry; entry != NULL; entry = entry->next) {
+    for (entry = menu->all_entries; entry != NULL; entry = entry->all_next) { // Hidden entries too
         entry->icon = load_texture_from_file(entry->icon_path);
         entry->icon_selected = (entry->icon_selected_path != NULL) ? load_texture_from_file(entry->icon_selected_path) : NULL;
+        entry->icon_off = NULL;
+        if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS) || !strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND) ||
+        !strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES) || !strcmp(entry->cmd, SCMD_TOGGLE_VISUALIZER) ||
+        !strcmp(entry->cmd, SCMD_TOGGLE_NOW_PLAYING) || toggle_keyword_arg(entry->cmd) != NULL) {
+            char *off_path = suffixed_path(entry->icon_path, OFF_SUFFIX);
+            if (off_path != NULL) {
+                entry->icon_off = load_texture_from_file(off_path);
+                free(off_path);
+            }
+        }
+        entry->title_texture = NULL;
+        entry->title_glow = NULL;
+        entry->other_title_texture = NULL;
+        entry->other_title_glow = NULL;
+        entry->showing_off_title = false;
         if (config.titles_enabled) {
-            entry->title_texture = render_text_texture(entry->title, &title_info, &entry->text_rect, &h);
+            SDL_Surface *title_surface = render_text(entry->title, &title_info, &entry->text_rect, &h);
+            if (config.title_glow && title_surface != NULL)
+                entry->title_glow = render_glow_texture(title_surface, config.title_glow_color, &entry->title_glow_padding);
+            entry->title_texture = load_texture(title_surface);
+
+            // A toggle's off title, swapped in by update_toggle_titles()
+            if (entry->title_off != NULL) {
+                int off_h;
+                SDL_Surface *off_surface = render_text(entry->title_off, &title_info, &entry->other_text_rect, &off_h);
+                if (config.title_glow && off_surface != NULL)
+                    entry->other_title_glow = render_glow_texture(off_surface, config.title_glow_color, &entry->other_title_glow_padding);
+                entry->other_title_texture = load_texture(off_surface);
+            }
             if (config.title_oversize_mode == OVERSIZE_SHRINK && h != geo.font_height)
                 entry->title_offset = (geo.font_height - h) / 2;
         }
     }
     menu->rendered = true;
+    update_toggle_titles();
 }
 
 // A function to move the selection left when clicked by user
-static void move_left()
+static void move_left_entry()
 {
+    if (carousel_active()) {
+        carousel_move(DIRECTION_LEFT);
+        return;
+    }
+
     // If we are not in leftmost position, move highlight left
     if (current_menu->highlight_position > 0) {
         if (config.highlight)
@@ -702,8 +1268,13 @@ static void move_left()
 }
 
 // A function to move the selection right when clicked by the user
-static void move_right()
+static void move_right_entry()
 {
+    if (carousel_active()) {
+        carousel_move(DIRECTION_RIGHT);
+        return;
+    }
+
     // If we are not in the rightmost position, move highlight right
     if ((int) current_menu->highlight_position < (geo.num_buttons - 1)) {
         if (config.highlight)
@@ -739,6 +1310,23 @@ static void move_right()
     }
 }
 
+// Move the selection left or right, with a sound if it moved
+static void move_left()
+{
+    Entry *previous = current_entry;
+    move_left_entry();
+    if (current_entry != previous)
+        play_sound(SOUND_MOVE);
+}
+
+static void move_right()
+{
+    Entry *previous = current_entry;
+    move_right_entry();
+    if (current_entry != previous)
+        play_sound(SOUND_MOVE);
+}
+
 // A function to load a submenu
 static void load_submenu(const char *submenu)
 {
@@ -749,17 +1337,56 @@ static void load_submenu(const char *submenu)
 // A function to load the previous menu
 static void load_back_menu(Menu *menu)
 {
+    if (menu->back != NULL)
+        play_sound(SOUND_BACK);
     load_menu(menu->back, false, config.reset_on_back);
+}
+
+// Fade-in state (after returning from an application, and at startup)
+static bool fade_in_active = false;
+static Uint32 fade_in_start = 0;
+
+// A function to start fading the screen in from black
+static void start_fade_in()
+{
+    if (config.fade_time > 0) {
+        fade_in_active = true;
+        fade_in_start = ticks.main;
+    }
+}
+
+// A function to draw a black overlay over the whole screen
+static void draw_black_overlay(Uint8 alpha)
+{
+    Uint8 r, g, b, a;
+    SDL_BlendMode mode;
+    SDL_GetRenderDrawColor(renderer, &r, &g, &b, &a);
+    SDL_GetRenderDrawBlendMode(renderer, &mode);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, alpha);
+    SDL_RenderFillRect(renderer, NULL);
+    SDL_SetRenderDrawBlendMode(renderer, mode);
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
 }
 
 // A function to update the screen with all visible textures
 static void draw_screen()
 {
+    // When launching an application with OnLaunch=Blank, fade to black instead of blanking at once
+    Uint32 launch_elapsed = ticks.main - ticks.application_launched;
+    bool launch_fading = state.application_launching && config.on_launch == ON_LAUNCH_BLANK &&
+                         config.fade_time > 0 && launch_elapsed < config.fade_time;
+
     // Draw background
     SDL_RenderClear(renderer);
-    if (!(state.application_launching && config.on_launch == ON_LAUNCH_BLANK)) {
-        if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW)
+    if (!(state.application_launching && config.on_launch == ON_LAUNCH_BLANK) || launch_fading) {
+        if (config.background_mode == BACKGROUND_WAVE)
+            draw_wave_background();
+        else if ((config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW) &&
+        background_texture != NULL)
             SDL_RenderCopy(renderer, background_texture, NULL, NULL);
+        if (config.background_mode == BACKGROUND_IMAGE)
+            draw_web_background_transition();
 
         if (config.background_mode == BACKGROUND_SLIDESHOW && state.slideshow_transition)
             SDL_RenderCopy(renderer, slideshow->transition_texture, NULL, NULL);
@@ -768,19 +1395,23 @@ static void draw_screen()
         if (config.background_overlay)
             SDL_RenderCopy(renderer, background_overlay, NULL, NULL);
 
-        // Draw scroll indicators
-        if (config.scroll_indicators &&
+        // Draw the audio visualizer over the background
+        draw_visualizer();
+
+        // Draw scroll indicators (not in carousel mode: the row fills the screen edge to edge)
+        if (config.scroll_indicators && !carousel_active() &&
         (current_menu->page*config.max_buttons + (unsigned int) geo.num_buttons) <= (current_menu->num_entries - 1))
             SDL_RenderCopy(renderer, scroll->texture, NULL, &scroll->rect_right);
 
-        if (config.scroll_indicators && current_menu->page > 0)
+        if (config.scroll_indicators && !carousel_active() && current_menu->page > 0)
             SDL_RenderCopyEx(renderer, scroll->texture, NULL, &scroll->rect_left, 0, NULL, SDL_FLIP_HORIZONTAL);
 
-        // Draw clock
+        // Draw clock, and what's playing under it
         if (config.clock_enabled) {
             SDL_RenderCopy(renderer, clk->time_texture, NULL, &clk->time_rect);
             if (config.clock_show_date)
                 SDL_RenderCopy(renderer, clk->date_texture, NULL, &clk->date_rect);
+            draw_now_playing();
         }
 
         // Draw highlight
@@ -792,19 +1423,38 @@ static void draw_screen()
             );
 
         // Draw buttons
+        if (carousel_active())
+            draw_carousel_buttons();
         Entry *entry = current_menu->root_entry;
         SDL_Texture *icon;
-        for (int i = 0; i < geo.num_buttons; i++) {
-            icon = (entry->icon_selected != NULL && i == (int) current_menu->highlight_position) ? entry->icon_selected : entry->icon;
+        for (int i = 0; !carousel_active() && i < geo.num_buttons; i++) {
+            icon = entry_icon(entry, i == (int) current_menu->highlight_position);
             SDL_RenderCopy(renderer, icon, NULL, &entry->icon_rect);
-            if (config.titles_enabled)
+            if (config.titles_enabled && (!config.titles_focused_only || i == (int) current_menu->highlight_position)) {
+                if (i == (int) current_menu->highlight_position)
+                    draw_title_glow(entry, &entry->text_rect, 1.0f);
                 SDL_RenderCopy(renderer, entry->title_texture, NULL, &entry->text_rect);
+            }
             entry = entry-> next;
         }
+
+        // Draw the layout popup over the menu
+        draw_layout_popup();
 
         // Draw screensaver
         if (state.screensaver_active)
             SDL_RenderCopy(renderer, screensaver->texture, NULL, NULL);
+
+        // Fade out when launching, fade in after returning
+        if (launch_fading)
+            draw_black_overlay((Uint8) (255 * launch_elapsed / config.fade_time));
+        else if (fade_in_active) {
+            Uint32 elapsed = ticks.main - fade_in_start;
+            if (elapsed >= config.fade_time)
+                fade_in_active = false;
+            else
+                draw_black_overlay((Uint8) (255 - 255 * elapsed / config.fade_time));
+        }
     }
     else
         SDL_RenderFillRect(renderer, NULL);
@@ -824,6 +1474,15 @@ static void execute_command(const char *command)
     // Copy command into separate buffer
     char *cmd = strdup(command);
 
+    // The layout popup takes all input while it is open (e.g. from the gamepad)
+    if (layout_popup_active()) {
+        char *popup_command = strtok(cmd, " ");
+        if (popup_command != NULL)
+            layout_popup_command(popup_command);
+        free(cmd);
+        return;
+    }
+
     // Parse special commands
     if (cmd[0] == ':') {
         char *delimiter = " ";
@@ -842,8 +1501,54 @@ static void execute_command(const char *command)
             move_left();
         else if (!strcmp(special_command, SCMD_RIGHT))
             move_right();
-        else if (!strcmp(special_command, SCMD_SELECT))
-            execute_command(current_entry->cmd);
+        else if (!strcmp(special_command, SCMD_UP))
+            move_up();
+        else if (!strcmp(special_command, SCMD_DOWN))
+            move_down();
+        else if (!strcmp(special_command, SCMD_SELECT)) {
+            play_sound(SOUND_SELECT);
+            execute_command(selected_entry()->cmd);
+        }
+        else if (!strcmp(special_command, SCMD_TOGGLE_SOUNDS)) {
+            toggle_sounds();
+            update_toggle_titles();
+        }
+        else if (!strcmp(special_command, SCMD_TOGGLE_BACKGROUND))
+            toggle_background();
+        else if (!strcmp(special_command, SCMD_TOGGLE_SPARKLES))
+            toggle_sparkles();
+        else if (!strcmp(special_command, SCMD_TOGGLE_VISUALIZER)) {
+            toggle_visualizer();
+            update_toggle_titles();
+            if (config.config_file_path != NULL &&
+            !save_config_setting(config.config_file_path, "Visualizer", SETTING_VISUALIZER_ENABLED,
+                config.visualizer_enabled ? "true" : "false"))
+                log_error("Could not save the visualizer setting to the config file");
+        }
+        else if (!strcmp(special_command, SCMD_TOGGLE_NOW_PLAYING)) {
+            if (!toggle_now_playing())
+                play_sound(SOUND_ERROR);
+            update_toggle_titles();
+            if (config.config_file_path != NULL &&
+            !save_config_setting(config.config_file_path, "Now Playing", SETTING_NOW_PLAYING_ENABLED,
+                config.now_playing_enabled ? "true" : "false"))
+                log_error("Could not save the now playing setting to the config file");
+        }
+        else if (!strcmp(special_command, SCMD_TOGGLE_KEYWORD)) {
+            // Add a wallpaper category to the ones new images are picked from, or remove it
+            char *keyword = strtok(NULL, "");
+            if (keyword == NULL || !toggle_keyword(keyword))
+                play_sound(SOUND_ERROR);
+            update_toggle_titles();
+        }
+        else if (!strcmp(special_command, SCMD_WALLPAPER)) {
+            // Optional keywords, then show the picture background with a new image
+            new_web_background(strtok(NULL, ""));
+            if (config.background_mode == BACKGROUND_WAVE && is_web_image(config.background_image))
+                toggle_background();
+        }
+        else if (!strcmp(special_command, SCMD_LAYOUTS))
+            open_layout_popup();
         else if (!strcmp(special_command, SCMD_HOME))
             load_menu(default_menu, false, true);
         else if (!strcmp(special_command, SCMD_BACK))
@@ -869,6 +1574,8 @@ static void execute_command(const char *command)
             else if (config.on_launch == ON_LAUNCH_QUIT)
                 quit(EXIT_SUCCESS);
         }
+        else
+            play_sound(SOUND_ERROR);
     }
     free(cmd);
 }
@@ -1144,6 +1851,9 @@ static void update_clock(bool block)
 
 static inline void pre_launch()
 {
+    pause_sounds(true);
+    pause_visualizer(true);
+    pause_now_playing(true);
     if (gamepads != NULL)
         disconnect_gamepad(-1, true, false);
 
@@ -1169,6 +1879,10 @@ static inline void post_launch()
         resume_slideshow();
     if (config.on_launch == ON_LAUNCH_BLANK)
         set_draw_color();
+    start_fade_in();
+    pause_sounds(false);
+    pause_visualizer(false);
+    pause_now_playing(false);
 
 #ifdef _WIN32
     SDL_EventState(SDL_SYSWMEVENT, SDL_DISABLE);
@@ -1190,6 +1904,7 @@ void quit(int status)
     if (config.quit_cmd != NULL) {
         execute_command(config.quit_cmd);
         free(config.quit_cmd);
+        config.quit_cmd = NULL; // cleanup() frees it too
     }
     cleanup();
     exit(status);
@@ -1208,6 +1923,153 @@ void print_version(FILE *stream)
     fprintf(stream, "  SDL_ttf   %u.%u.%u" endline, ttf_version->major, ttf_version->minor, ttf_version->patch);
 }
 
+// The picture background (Image or Slideshow) that :togglebackground switches to from Wave
+static ModeBackground picture_mode = BACKGROUND_COLOR;
+static bool picture_loaded = false;
+
+// A function to load the Image or Slideshow background
+static void load_picture_background()
+{
+    picture_loaded = true;
+    if (config.background_mode == BACKGROUND_IMAGE) {
+        if (config.background_image == NULL)
+            log_error("Background 'Image' setting not specified in config file");
+        else if (is_web_image(config.background_image))
+            init_web_background();
+        else {
+            SDL_Surface *surface = IMG_Load(config.background_image);
+            if (surface == NULL)
+                log_error("Could not load image %s\n%s", config.background_image, IMG_GetError());
+            background_texture = load_texture(apply_background_filters(surface));
+        }
+
+        // Switch to color mode if loading background image failed (a URL image shows the
+        // background color until its first download finishes)
+        if (background_texture == NULL && !is_web_image(config.background_image)) {
+            config.background_mode = BACKGROUND_COLOR;
+            log_error("Couldn't load background image, defaulting to color background");
+            set_draw_color();
+        }
+    }
+
+    // Render first slideshow image
+    else if (config.background_mode == BACKGROUND_SLIDESHOW) {
+        if (slideshow == NULL)
+            init_slideshow();
+        if (config.background_mode == BACKGROUND_SLIDESHOW) {
+            SDL_Surface *surface = load_next_slideshow_background(slideshow, false);
+            background_texture = load_texture(surface);
+            ticks.slideshow_load = ticks.main;
+        }
+    }
+}
+
+// A function to switch between the Wave background and the picture background,
+// and save the choice to the config file
+static void toggle_background()
+{
+    if (config.background_mode == BACKGROUND_WAVE) {
+        if (picture_mode == BACKGROUND_COLOR) {
+            log_error("No background Image or SlideshowDirectory set to switch to");
+            play_sound(SOUND_ERROR);
+            return;
+        }
+        config.background_mode = picture_mode;
+        if (!picture_loaded)
+            load_picture_background();
+    }
+    else if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW) {
+        if (!wave_background_supported()) {
+            log_error("The Wave background needs SDL 2.0.18 or newer");
+            play_sound(SOUND_ERROR);
+            return;
+        }
+        config.background_mode = BACKGROUND_WAVE;
+    }
+    else
+        return;
+    set_draw_color();
+    start_fade_in();
+    update_toggle_titles();
+    if (config.context_entries)
+        filter_menus();
+    log_debug("Background mode: %s", get_mode_setting(MODE_SETTING_BACKGROUND, config.background_mode));
+
+    if (config.config_file_path != NULL &&
+    !save_config_setting(config.config_file_path, "Background", SETTING_BACKGROUND_MODE,
+        get_mode_setting(MODE_SETTING_BACKGROUND, config.background_mode)))
+        log_error("Could not save the background setting to the config file");
+}
+
+// A function to remember every menu's full entry list, so entries can be hidden and shown again
+static void init_entry_lists()
+{
+    for (Menu *menu = config.first_menu; menu != NULL; menu = menu->next) {
+        menu->all_entries = menu->first_entry;
+        for (Entry *entry = menu->first_entry; entry != NULL; entry = entry->next)
+            entry->all_next = entry->next;
+    }
+}
+
+// A function to check whether an entry applies to the current background (ContextEntries):
+// the sparkles toggle only applies to the Wave background, and wallpaper entries only to pictures
+static bool entry_visible(const Entry *entry)
+{
+    if (!config.context_entries)
+        return true;
+    bool wave = config.background_mode == BACKGROUND_WAVE;
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES))
+        return wave;
+    size_t length = strlen(SCMD_WALLPAPER);
+    if (!strncmp(entry->cmd, SCMD_WALLPAPER, length) && (entry->cmd[length] == '\0' || entry->cmd[length] == ' '))
+        return !wave;
+    return true;
+}
+
+// A function to rebuild each menu's visible entries after the background changes
+static void filter_menus()
+{
+    for (Menu *menu = config.first_menu; menu != NULL; menu = menu->next) {
+        Entry *previous = NULL;
+        menu->first_entry = NULL;
+        menu->num_entries = 0;
+        for (Entry *entry = menu->all_entries; entry != NULL; entry = entry->all_next) {
+            if (!entry_visible(entry))
+                continue;
+            entry->previous = previous;
+            entry->next = NULL;
+            if (previous != NULL)
+                previous->next = entry;
+            else
+                menu->first_entry = entry;
+            previous = entry;
+            menu->num_entries++;
+        }
+        if (menu->last_selected_entry != NULL && !entry_visible(menu->last_selected_entry))
+            menu->last_selected_entry = NULL;
+    }
+
+    // Lay out the current menu again, keeping the selection when it's still visible
+    if (current_menu != NULL && current_entry != NULL) {
+        bool keep = entry_visible(current_entry);
+        if (keep)
+            current_menu->last_selected_entry = current_entry;
+        load_menu(current_menu, false, !keep);
+    }
+}
+
+// A function to turn the Wave background's sparkles on or off, and save the choice to the config file
+static void toggle_sparkles()
+{
+    config.wave_sparkles = !config.wave_sparkles;
+    update_toggle_titles();
+    log_debug("Sparkles %s", config.wave_sparkles ? "enabled" : "disabled");
+    if (config.config_file_path != NULL &&
+    !save_config_setting(config.config_file_path, "Background", SETTING_WAVE_SPARKLES,
+        config.wave_sparkles ? "true" : "false"))
+        log_error("Could not save the sparkles setting to the config file");
+}
+
 int main(int argc, char *argv[]) 
 {
     int error;
@@ -1219,7 +2081,7 @@ int main(int argc, char *argv[])
 
     // Parse config file for settings and menu entries
     parse_config_file(config_file_path);
-    free(config_file_path);
+    config.config_file_path = config_file_path;
 
     // Get default menu
     if (config.default_menu == NULL)
@@ -1234,18 +2096,34 @@ int main(int argc, char *argv[])
     init_sdl_ttf();
     validate_settings(&geo);
     
+    // Remember the picture background that :togglebackground switches to from the Wave background
+    if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW)
+        picture_mode = config.background_mode;
+    else if (config.background_image != NULL)
+        picture_mode = BACKGROUND_IMAGE;
+    else if (config.slideshow_directory != NULL)
+        picture_mode = BACKGROUND_SLIDESHOW;
+
     // Initialize slideshow
     if (config.background_mode == BACKGROUND_SLIDESHOW)
         init_slideshow();
 
     // Initialize Nanosvg, create window and renderer
     init_svg();
+    init_sounds();
+    if (config.background_mode == BACKGROUND_WAVE && !wave_background_supported()) {
+        log_error("The Wave background needs SDL 2.0.18 or newer, using a color background");
+        config.background_mode = BACKGROUND_COLOR;
+        set_draw_color();
+    }
     create_window();
 
     // Initialize timing
     ticks.main = SDL_GetTicks();
     ticks.last_input = ticks.main;
     ticks.program_start = ticks.main;
+    srand((unsigned int) time(NULL));
+    start_fade_in();
 
     // Load gamepad overrides
     if (config.gamepad_enabled && config.gamepad_mappings_file != NULL) {
@@ -1259,25 +2137,8 @@ int main(int argc, char *argv[])
     }
 
     // Render background
-    if (config.background_mode == BACKGROUND_IMAGE) {
-        if (config.background_image == NULL)
-            log_error("Background 'Image' setting not specified in config file");
-        else
-            background_texture = load_texture_from_file(config.background_image);
-
-        // Switch to color mode if loading background image failed
-        if (background_texture == NULL) {
-            config.background_mode = BACKGROUND_COLOR;
-            log_error("Couldn't load background image, defaulting to color background");
-            set_draw_color();
-        }
-    }
-
-    // Render first slideshow image
-    else if (config.background_mode == BACKGROUND_SLIDESHOW) {
-        SDL_Surface *surface = load_next_slideshow_background(slideshow, false);
-        background_texture = load_texture(surface);
-    }
+    if (config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW)
+        load_picture_background();
 
     // Initialize screensaver
     if (config.screensaver_enabled)
@@ -1289,6 +2150,7 @@ int main(int argc, char *argv[])
         init_clock(clk);
         ticks.clock_update = ticks.main;
     }
+    init_now_playing();
     
     // Render highlight
     if (config.highlight) {
@@ -1342,10 +2204,17 @@ int main(int argc, char *argv[])
         debug_menu_entries(config.first_menu, config.num_menus);
     }
 
-    // Load the default menu and display it
+    // Hide the entries that don't apply to the starting background, then load the default menu
+    init_entry_lists();
+    if (config.context_entries)
+        filter_menus();
     error = load_menu(default_menu, false, true);
     if (error)
         log_fatal("Could not load default menu %s", config.default_menu);
+
+    play_sound(SOUND_STARTUP);
+
+    update_visualizer_state();
 
     // Execute startup command
     if (config.startup_cmd != NULL)
@@ -1369,7 +2238,12 @@ int main(int argc, char *argv[])
                 case SDL_MOUSEBUTTONDOWN:
                     if (config.mouse_select && event.button.button == SDL_BUTTON_LEFT) {
                         ticks.last_input = ticks.main;
-                        execute_command(current_entry->cmd);
+                        if (layout_popup_active())
+                            layout_popup_command(SCMD_SELECT);
+                        else {
+                            play_sound(SOUND_SELECT);
+                            execute_command(selected_entry()->cmd);
+                        }
                     }
                     break;
 
@@ -1435,17 +2309,25 @@ int main(int argc, char *argv[])
                 poll_gamepad();
             if (config.background_mode == BACKGROUND_SLIDESHOW)
                 update_slideshow();
+            else if (config.background_mode == BACKGROUND_IMAGE)
+                update_web_background();
             if (config.screensaver_enabled)
                 update_screensaver();
+            // Render the clock on this thread: SDL_ttf isn't thread-safe, and the menus and
+            // the layout popup render text here too. It's two short strings once a minute.
             if (config.clock_enabled)
-                update_clock(false);
+                update_clock(true);
         }
         if (state.application_launching &&
         ticks.main - ticks.application_launched > config.application_timeout) {
             state.application_launching = false;
             if (config.on_launch == ON_LAUNCH_BLANK)
                 set_draw_color();
+            start_fade_in();
         }
+#ifdef __unix__
+        reap_children();
+#endif
         if (state.application_running)
             SDL_Delay(APPLICATION_WAIT_PERIOD);
         else

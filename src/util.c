@@ -5,17 +5,23 @@
 #include <stdbool.h>
 #include <time.h>
 #include <getopt.h>
+#ifdef __unix__
+#include <unistd.h>
+#endif
 #include <SDL.h>
 #include <SDL_syswm.h>
 #include "launcher.h"
 #include <launcher_config.h>
 #include "util.h"
 #include "debug.h"
+#include "layouts.h"
 #include "platform/platform.h"
 #include <ini.h>
 
 static void add_gamepad_control(const char *label, const char *cmd);
 static bool parse_mode_setting(ModeSettingType type, const char *value, int *setting);
+static bool parse_percent_fraction(const char *value, float min, float max, float *result);
+static bool parse_percent_or_number(const char *value, float min, float max, float *result);
 static Menu *create_menu(const char *menu_name, size_t *num_menus);
 
 extern Config          config;
@@ -24,13 +30,16 @@ extern Hotkey          *hotkeys;
 Menu                   *menu  = NULL;
 Entry                  *entry = NULL;
 
-static const char *mode_settings[][5] = {
-    {"Color", "Image", "Slideshow", "Transparent", NULL}, // Background Mode
+static const char *mode_settings[][6] = {
+    {"Color", "Image", "Slideshow", "Transparent", "Wave", NULL}, // Background Mode
     {"Blank", "None", "Quit", NULL, NULL},                // OnLaunch
     {"Truncated", "Shrink", "None", NULL, NULL},          // OversizeMode
     {"Left", "Right", NULL, NULL, NULL},                  // Clock Alignment
     {"24hr", "12hr", "Auto", NULL, NULL},                 // Clock Format
-    {"Big", "Little", "Auto", NULL, NULL}                 // Date Format
+    {"Big", "Little", "Auto", NULL, NULL},                // Date Format
+    {"Paged", "Carousel", NULL, NULL, NULL},              // Scroll Mode
+    {"Screen", "Column", NULL, NULL, NULL},               // Submenu Mode
+    {"Spectrogram", "Bars", "Line", NULL, NULL}           // Visualizer Style
 };
 
 // A function to handle the arguments from the command line
@@ -148,6 +157,11 @@ int config_handler(void *user, const char *section, const char *name, const char
         }
         else if (MATCH(name, SETTING_ON_LAUNCH))
             parse_mode_setting(MODE_SETTING_ON_LAUNCH, value, (int*) &config.on_launch);
+        else if (MATCH(name, SETTING_FADE_TIME)) {
+            int fade_time = atoi(value);
+            if (fade_time >= 0)
+                config.fade_time = (Uint32) fade_time;
+        }
         else if (MATCH(name, SETTING_WRAP_ENTRIES))
             convert_bool(value, &config.wrap_entries);
         else if (MATCH(name, SETTING_RESET_ON_BACK))
@@ -167,6 +181,40 @@ int config_handler(void *user, const char *section, const char *name, const char
             int max_buttons = atoi(value);
             if (max_buttons > 0)
                 config.max_buttons = (unsigned int) max_buttons;
+        }
+        else if (MATCH(name, SETTING_SCROLL_MODE))
+            parse_mode_setting(MODE_SETTING_SCROLL, value, (int*) &config.scroll_mode);
+        else if (MATCH(name, SETTING_SCROLL_TIME)) {
+            int scroll_time = atoi(value);
+            if (scroll_time >= 0)
+                config.scroll_time = (Uint32) scroll_time;
+        }
+        else if (MATCH(name, SETTING_FOCUS_SCALE))
+            parse_percent_fraction(value, 1.0f, 3.0f, &config.focus_scale);
+        else if (MATCH(name, SETTING_FOCUS_POSITION))
+            parse_percent_fraction(value, 0.0f, 1.0f, &config.focus_position);
+        else if (MATCH(name, SETTING_LAYOUT_SCHEME)) {
+            int layout = find_layout(value);
+            if (layout >= 0)
+                config.layout_scheme = layout;
+            else
+                log_error("Unknown layout scheme %s", value);
+        }
+        else if (MATCH(name, SETTING_SUBMENU_MODE))
+            parse_mode_setting(MODE_SETTING_SUBMENU, value, (int*) &config.submenu_mode);
+        else if (MATCH(name, SETTING_COLUMN_ICON_SIZE))
+            parse_percent_fraction(value, 0.1f, 2.0f, &config.column_icon_scale);
+        else if (MATCH(name, SETTING_COLUMN_FOCUS_SCALE))
+            parse_percent_fraction(value, 1.0f, 3.0f, &config.column_focus_scale);
+        else if (MATCH(name, SETTING_FOCUSED_BRIGHTNESS)) {
+            float brightness;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &brightness))
+                config.focused_brightness = (Uint8) (brightness * 255.0f + 0.5f);
+        }
+        else if (MATCH(name, SETTING_UNFOCUSED_OPACITY)) {
+            float opacity;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &opacity))
+                config.unfocused_alpha = (Uint8) (opacity * 255.0f + 0.5f);
         }
         else if (MATCH(name, SETTING_ICON_SIZE)) {
             Uint16 icon_size = (Uint16) atoi(value);
@@ -193,6 +241,47 @@ int config_handler(void *user, const char *section, const char *name, const char
             parse_mode_setting(MODE_SETTING_BACKGROUND, value, (int*) &config.background_mode);
         else if (MATCH(name, SETTING_BACKGROUND_COLOR))
             hex_to_color(value, &config.background_color);
+        else if (MATCH(name, SETTING_WAVE_COLOR)) {
+            if (MATCH(value, "Auto"))
+                config.wave_color_mode = WAVE_COLOR_MONTH;
+            else if (MATCH(value, "Sky"))
+                config.wave_color_mode = WAVE_COLOR_SKY;
+            else if (hex_to_color(value, &config.wave_color))
+                config.wave_color_mode = WAVE_COLOR_FIXED;
+        }
+        else if (MATCH(name, SETTING_IMAGE_REFRESH)) {
+            int minutes = atoi(value);
+            if (minutes >= 0)
+                config.image_refresh = (Uint32) minutes * 60000;
+        }
+        else if (MATCH(name, SETTING_IMAGE_JSON)) {
+            free(config.image_json);
+            config.image_json = strdup(value);
+        }
+        else if (MATCH(name, SETTING_IMAGE_KEYWORDS)) {
+            free(config.image_keywords);
+            config.image_keywords = strdup(value);
+        }
+        else if (MATCH(name, SETTING_IMAGE_BLUR)) {
+            // Homepage (Tailwind) blur sizes, in CSS pixels
+            static const char *names[] = {"none", "sm", "md", "lg", "xl", "2xl", "3xl"};
+            static const float radii[] = {0.0f, 4.0f, 12.0f, 16.0f, 24.0f, 40.0f, 64.0f};
+            for (size_t i = 0; i < sizeof(radii) / sizeof(radii[0]); i++)
+                if (MATCH(value, names[i]))
+                    config.image_blur = radii[i];
+        }
+        else if (MATCH(name, SETTING_IMAGE_BRIGHTNESS))
+            parse_percent_or_number(value, 0.0f, 2.0f, &config.image_brightness);
+        else if (MATCH(name, SETTING_IMAGE_SATURATION))
+            parse_percent_or_number(value, 0.0f, 2.0f, &config.image_saturation);
+        else if (MATCH(name, SETTING_IMAGE_OPACITY))
+            parse_percent_or_number(value, 0.0f, 1.0f, &config.image_opacity);
+        else if (MATCH(name, SETTING_WAVE_TIME_OF_DAY))
+            convert_bool(value, &config.wave_time_of_day);
+        else if (MATCH(name, SETTING_WAVE_SPARKLES))
+            convert_bool(value, &config.wave_sparkles);
+        else if (MATCH(name, SETTING_CONTEXT_ENTRIES))
+            convert_bool(value, &config.context_entries);
         else if (MATCH(name, SETTING_BACKGROUND_IMAGE)) {
             config.background_image = strdup(value);
             clean_path(config.background_image);
@@ -245,6 +334,20 @@ int config_handler(void *user, const char *section, const char *name, const char
             hex_to_color(value, &config.title_shadow_color);
         else if (MATCH(name, SETTING_TITLE_OVERSIZE_MODE))
             parse_mode_setting(MODE_SETTING_OVERSIZE, value, (int*) &config.title_oversize_mode);
+        else if (MATCH(name, SETTING_TITLE_FOCUSED_ONLY))
+            convert_bool(value, &config.titles_focused_only);
+        else if (MATCH(name, SETTING_TITLE_GLOW))
+            convert_bool(value, &config.title_glow);
+        else if (MATCH(name, SETTING_TITLE_GLOW_COLOR)) {
+            Uint8 alpha = config.title_glow_color.a;
+            if (hex_to_color(value, &config.title_glow_color))
+                config.title_glow_color.a = alpha;
+        }
+        else if (MATCH(name, SETTING_TITLE_GLOW_OPACITY)) {
+            float opacity;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &opacity))
+                config.title_glow_color.a = (Uint8) (opacity * 255.0f + 0.5f);
+        }
         else if (MATCH(name, SETTING_TITLE_PADDING)) {
             int title_padding = atoi(value);
             if (title_padding >= 0)
@@ -305,6 +408,51 @@ int config_handler(void *user, const char *section, const char *name, const char
             if (is_percent(value))
                 copy_string(config.scroll_indicator_opacity, value, sizeof(config.scroll_indicator_opacity));
         }
+    }
+
+    else if (MATCH(section, "Sounds")) {
+        if (MATCH(name, SETTING_SOUNDS_ENABLED))
+            convert_bool(value, &config.sounds_enabled);
+        else if (MATCH(name, SETTING_SOUNDS_VOLUME)) {
+            float volume;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &volume))
+                config.sound_volume = (int) (volume * (float) SDL_MIX_MAXVOLUME + 0.5f);
+        }
+        else {
+            static const char *sound_settings[NUM_SOUNDS] = {
+                SETTING_SOUND_MOVE, SETTING_SOUND_SELECT, SETTING_SOUND_BACK, SETTING_SOUND_OFF,
+                SETTING_SOUND_STARTUP, SETTING_SOUND_CONFIRM, SETTING_SOUND_ERROR
+            };
+            for (int type = 0; type < NUM_SOUNDS; type++) {
+                if (MATCH(name, sound_settings[type])) {
+                    free(config.sound_paths[type]);
+                    config.sound_paths[type] = strdup(value);
+                    clean_path(config.sound_paths[type]);
+                    break;
+                }
+            }
+        }
+    }
+
+    else if (MATCH(section, "Now Playing")) {
+        if (MATCH(name, SETTING_NOW_PLAYING_ENABLED))
+            convert_bool(value, &config.now_playing_enabled);
+        else if (MATCH(name, SETTING_NOW_PLAYING_ALBUM_ART))
+            convert_bool(value, &config.now_playing_album_art);
+    }
+
+    else if (MATCH(section, "Visualizer")) {
+        if (MATCH(name, SETTING_VISUALIZER_ENABLED))
+            convert_bool(value, &config.visualizer_enabled);
+        else if (MATCH(name, SETTING_VISUALIZER_STYLE))
+            parse_mode_setting(MODE_SETTING_VISUALIZER, value, (int*) &config.visualizer_style);
+        else if (MATCH(name, SETTING_VISUALIZER_OPACITY)) {
+            float opacity;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &opacity))
+                config.visualizer_alpha = (Uint8) (opacity * 255.0f + 0.5f);
+        }
+        else if (MATCH(name, SETTING_VISUALIZER_HEIGHT))
+            parse_percent_fraction(value, 0.05f, 1.0f, &config.visualizer_height);
     }
 
     else if (MATCH(section, "Clock")) {
@@ -417,6 +565,14 @@ int config_handler(void *user, const char *section, const char *name, const char
             }
         }
 
+        // The entry a column starts on, instead of the last selected one
+        if (MATCH(name, SETTING_DEFAULT_ENTRY)) {
+            int default_entry = atoi(value);
+            if (default_entry > 0)
+                menu->default_entry = default_entry;
+            return 1;
+        }
+
         // Parse entry line for title, icon path, command
         char *string = (char*) value;
         char *token;
@@ -445,8 +601,15 @@ int config_handler(void *user, const char *section, const char *name, const char
         // Store data in entry struct
         int i;
         for (i = 0;i < 3 && token != NULL; i++) {
-            if (i == 0)
+            if (i == 0) {
                 entry->title = strdup(token);
+                entry->title_off = NULL;
+                char *separator = strchr(entry->title, '|');
+                if (separator != NULL) {
+                    *separator = '\0';
+                    entry->title_off = strdup(separator + 1);
+                }
+            }
             else if (i == 1) {
                 entry->icon_path = strdup(token);
                 clean_path(entry->icon_path);
@@ -499,6 +662,144 @@ const char *get_mode_setting(int type, int value)
     return mode_settings[type][value];
 }
 
+// A function to set a single setting in the config file, preserving the rest of the file.
+// The setting is added to the section (or the section to the file) if it doesn't exist.
+bool save_config_setting(const char *path, const char *section, const char *name, const char *value)
+{
+    FILE *file = fopen(path, "rb");
+    if (file == NULL)
+        return false;
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    if (size < 0) {
+        fclose(file);
+        return false;
+    }
+    char *contents = calloc((size_t) size + 1, 1);
+    size_t read = fread(contents, 1, (size_t) size, file);
+    fclose(file);
+    contents[read] = '\0';
+
+    char tmp_path[MAX_PATH_CHARS + 1];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", path);
+    FILE *out = fopen(tmp_path, "wb");
+    if (out == NULL) {
+        free(contents);
+        return false;
+    }
+
+    size_t section_length = strlen(section);
+    size_t name_length = strlen(name);
+    bool in_section = false, section_found = false, written = false;
+
+    // A last line without a newline is completed before anything is added after it
+    size_t contents_length = strlen(contents);
+    if (contents_length > 0 && contents[contents_length - 1] != '\n') {
+        char *completed = realloc(contents, contents_length + 2);
+        if (completed != NULL) {
+            contents = completed;
+            strcpy(contents + contents_length, "\n");
+        }
+    }
+
+    // Blank lines are held back, so a new setting goes directly after the section's last line
+    char *blank_start = NULL;
+    size_t blank_length = 0;
+
+    char *line = contents;
+    while (*line != '\0') {
+        char *end = strchr(line, '\n');
+        size_t length = end != NULL ? (size_t) (end - line) + 1 : strlen(line);
+        bool blank = strspn(line, " \t\r\n") >= length;
+        if (blank) {
+            if (blank_start == NULL)
+                blank_start = line;
+            blank_length += length;
+            line += length;
+            continue;
+        }
+
+        if (line[0] == '[') {
+            // Leaving the section without finding the setting: add it at the end of the section
+            if (in_section && !written) {
+                fprintf(out, "%s=%s\n", name, value);
+                written = true;
+            }
+            in_section = !strncmp(line + 1, section, section_length) && line[section_length + 1] == ']';
+            section_found |= in_section;
+        }
+        if (blank_start != NULL) {
+            fwrite(blank_start, 1, blank_length, out);
+            blank_start = NULL;
+            blank_length = 0;
+        }
+
+        if (in_section && !written && line[0] != '[' && !strncmp(line, name, name_length)) {
+            const char *p = line + name_length;
+            while (*p == ' ' || *p == '\t')
+                p++;
+            if (*p == '=') {
+                fprintf(out, "%s=%s%s", name, value, (length >= 2 && line[length - 2] == '\r') ? "\r\n" : "\n");
+                written = true;
+                line += length;
+                continue;
+            }
+        }
+        fwrite(line, 1, length, out);
+        line += length;
+    }
+    if (!written && section_found && in_section) {
+        fprintf(out, "%s=%s\n", name, value);
+        written = true;
+    }
+    if (blank_start != NULL)
+        fwrite(blank_start, 1, blank_length, out);
+    if (!written) {
+        if (!section_found)
+            fprintf(out, "\n[%s]\n", section);
+        fprintf(out, "%s=%s\n", name, value);
+    }
+    free(contents);
+
+    // Flush to disk before replacing the config file, so a crash or power loss can't leave it empty
+    bool ok = fflush(out) == 0;
+#ifdef __unix__
+    ok = ok && fsync(fileno(out)) == 0;
+#endif
+    ok = (fclose(out) == 0) && ok;
+    if (ok)
+        ok = rename(tmp_path, path) == 0;
+    if (!ok)
+        remove(tmp_path);
+    return ok;
+}
+
+// A function to parse a percent string (e.g. "150%") into a fraction within [min, max]
+static bool parse_percent_fraction(const char *value, float min, float max, float *result)
+{
+    if (!is_percent(value))
+        return false;
+    float fraction = (float) atof(value) / 100.0f;
+    if (fraction < min || fraction > max)
+        return false;
+    *result = fraction;
+    return true;
+}
+
+// A function to parse a percent given as "50%" or, like Homepage's settings, as a plain "50"
+static bool parse_percent_or_number(const char *value, float min, float max, float *result)
+{
+    if (is_percent(value))
+        return parse_percent_fraction(value, min, max, result);
+    char *end;
+    float fraction = strtof(value, &end) / 100.0f;
+    if (end == value || fraction < min || fraction > max)
+        return false;
+    *result = fraction;
+    return true;
+}
+
 // A function to determine if a string is a percent value
 bool is_percent(const char *string)
 {
@@ -524,12 +825,18 @@ void clean_path(char *path)
 // A function to get the selected path 
 char *selected_path(const char *path)
 {
+    return suffixed_path(path, SELECTED_SUFFIX);
+}
+
+// A function to get the path of a variant of a file (e.g. icon.png -> icon_off.png), if it exists
+char *suffixed_path(const char *path, const char *suffix)
+{
     char buffer[MAX_PATH_CHARS + 1];
     size_t length = strlen(path);
     char *out = NULL;
 
     // Find file extension
-    if (length + LEN(SELECTED_SUFFIX) + 1 > sizeof(buffer))
+    if (length + strlen(suffix) + 1 > sizeof(buffer))
         return out;
     char *p = (char*) path + length - 1;
     while (*p != '.' && p > path)
@@ -540,7 +847,7 @@ char *selected_path(const char *path)
     // Assemble path with suffix
     strcpy(buffer, path);
     buffer[p - path] = '\0';
-    strcat(buffer, SELECTED_SUFFIX);
+    strcat(buffer, suffix);
     strcat(buffer, p);
 
     if (file_exists(buffer))

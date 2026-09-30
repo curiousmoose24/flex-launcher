@@ -1,0 +1,4 @@
+Monochrome launcher icons (XMB style), white glyphs; the launcher dims unfocused icons (UnfocusedOpacity).
+Brand glyphs (kodi, youtube, steam): Simple Icons, CC0 1.0 - https://simpleicons.org
+Other glyphs: Material Design Icons (Pictogrammers), Apache License 2.0 - https://pictogrammers.com/library/mdi/
+Brand logos remain trademarks of their respective owners.

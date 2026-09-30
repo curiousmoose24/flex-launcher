@@ -10,6 +10,20 @@ set(SOURCES
   debug.h
   clock.c
   clock.h
+  sound.c
+  sound.h
+  wave.c
+  wave.h
+  webimage.c
+  webimage.h
+  json.c
+  json.h
+  layouts.c
+  layouts.h
+  visualizer.c
+  visualizer.h
+  nowplaying.c
+  nowplaying.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})
@@ -28,6 +42,10 @@ add_subdirectory("platform")
 target_link_libraries(${EXECUTABLE_TITLE} platform)
 if (UNIX)
   target_link_libraries(${EXECUTABLE_TITLE} PkgConfig::SDL2 PkgConfig::SDL2_IMAGE PkgConfig::SDL2_TTF PkgConfig::INIH m)
+  if (CURL_FOUND)
+    target_link_libraries(${EXECUTABLE_TITLE} PkgConfig::CURL)
+    target_compile_definitions(${EXECUTABLE_TITLE} PRIVATE HAVE_CURL)
+  endif ()
 else ()
   target_link_libraries(${EXECUTABLE_TITLE} 
   $<TARGET_NAME_IF_EXISTS:SDL2::SDL2main>

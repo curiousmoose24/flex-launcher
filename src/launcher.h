@@ -46,6 +46,16 @@
 #define SCMD_EXIT ":exit"
 #define SCMD_LEFT ":left"
 #define SCMD_RIGHT ":right"
+#define SCMD_UP ":up"
+#define SCMD_DOWN ":down"
+#define SCMD_TOGGLE_SOUNDS ":togglesounds"
+#define SCMD_TOGGLE_BACKGROUND ":togglebackground"
+#define SCMD_TOGGLE_SPARKLES ":togglesparkles"
+#define SCMD_TOGGLE_VISUALIZER ":togglevisualizer"
+#define SCMD_TOGGLE_NOW_PLAYING ":togglenowplaying"
+#define SCMD_TOGGLE_KEYWORD ":togglekeyword"
+#define SCMD_WALLPAPER ":wallpaper"
+#define SCMD_LAYOUTS ":layouts"
 #define SCMD_HOME ":home"
 #define SCMD_BACK ":back"
 #define SCMD_QUIT ":quit"
@@ -59,14 +69,18 @@ typedef enum {
     MODE_SETTING_OVERSIZE,
     MODE_SETTING_ALIGNMENT,
     MODE_SETTING_TIME_FORMAT,
-    MODE_SETTING_DATE_FORMAT
+    MODE_SETTING_DATE_FORMAT,
+    MODE_SETTING_SCROLL,
+    MODE_SETTING_SUBMENU,
+    MODE_SETTING_VISUALIZER
 } ModeSettingType;
 
 typedef enum {
     BACKGROUND_COLOR,
     BACKGROUND_IMAGE,
     BACKGROUND_SLIDESHOW,
-    BACKGROUND_TRANSPARENT
+    BACKGROUND_TRANSPARENT,
+    BACKGROUND_WAVE
 } ModeBackground;
 
 typedef enum {
@@ -80,6 +94,39 @@ typedef enum {
     OVERSIZE_SHRINK,
     OVERSIZE_NONE
 } ModeOversize;
+
+typedef enum {
+    SCROLL_MODE_PAGED,
+    SCROLL_MODE_CAROUSEL
+} ModeScroll;
+
+typedef enum {
+    SUBMENU_MODE_SCREEN,
+    SUBMENU_MODE_COLUMN
+} ModeSubmenu;
+
+typedef enum {
+    WAVE_COLOR_FIXED,  // WaveColor=#RRGGBB
+    WAVE_COLOR_MONTH,  // WaveColor=Auto: a color for each month
+    WAVE_COLOR_SKY     // WaveColor=Sky: sky colors that follow the time of day
+} WaveColorMode;
+
+typedef enum {
+    VISUALIZER_SPECTROGRAM,
+    VISUALIZER_BARS,
+    VISUALIZER_LINE
+} ModeVisualizer;
+
+typedef enum {
+    SOUND_MOVE,
+    SOUND_SELECT,
+    SOUND_BACK,
+    SOUND_OFF,
+    SOUND_STARTUP, // Plays once when the launcher starts; no default
+    SOUND_CONFIRM, // A setting was chosen (e.g. in the layout popup); no default
+    SOUND_ERROR,   // An action failed; no default
+    NUM_SOUNDS
+} SoundType;
 
 typedef enum {
     ALIGNMENT_LEFT,
@@ -138,17 +185,28 @@ typedef struct {
 // Linked list for menu entries
 typedef struct entry {
     char           *title;
+    char           *title_off; // Toggle entries ("Title|Off title"): the title shown in the off state, or NULL
     char           *icon_path;
     char           *icon_selected_path;
     char           *cmd;
     SDL_Texture    *icon;
     SDL_Texture    *icon_selected;
+    SDL_Texture    *icon_off; // Toggle entries: shown while sounds are off, or while the Wave background is off
     SDL_Rect       icon_rect;
     SDL_Texture    *title_texture;
+    SDL_Texture    *title_glow; // Blurred copy of the title, drawn behind it when selected
+    int            title_glow_padding; // Extra space around the title in the glow texture
     SDL_Rect       text_rect;
     int            title_offset;
-    struct entry   *next;
-    struct entry   *previous;
+    // The other title's textures, swapped with the ones above when the toggle's state changes
+    SDL_Texture    *other_title_texture;
+    SDL_Texture    *other_title_glow;
+    int            other_title_glow_padding;
+    SDL_Rect       other_text_rect;
+    bool           showing_off_title;
+    struct entry   *next;     // Next visible entry
+    struct entry   *previous; // Previous visible entry
+    struct entry   *all_next; // Next entry, including hidden ones
 } Entry;
 
 // Linked list for menus
@@ -158,9 +216,11 @@ typedef struct menu {
     bool         rendered;
     unsigned int page;
     unsigned int highlight_position;
-    Entry        *first_entry;
+    Entry        *first_entry; // First visible entry
+    Entry        *all_entries; // First entry, including hidden ones
     Entry        *root_entry;
     Entry        *last_selected_entry;
+    int          default_entry; // Entry (1 = first visible) selected when the menu's column is switched to; 0 = the last selected
     struct menu  *next;
     struct menu  *back;
 } Menu;
@@ -278,6 +338,42 @@ typedef struct {
     SDL_Color scroll_indicator_outline_color;
     char scroll_indicator_opacity[PERCENT_MAX_CHARS];
     bool wrap_entries;
+    ModeScroll scroll_mode;
+    Uint32 scroll_time;
+    float focus_scale; // Size of the focused icon relative to IconSize (carousel)
+    float focus_position; // Horizontal center of the focused icon, fraction of screen width (carousel)
+    Uint8 unfocused_alpha; // Opacity of icons away from focus (carousel)
+    Uint8 focused_brightness; // Brightness of the selected row and column icons and titles (carousel), 255 = unchanged
+    bool titles_focused_only;
+    bool title_glow; // Soft glow around the title of the selected entry
+    SDL_Color title_glow_color; // Alpha is the glow opacity
+    int layout_scheme; // Index of the console layout scheme chosen in the :layouts popup
+    ModeSubmenu submenu_mode; // Column: submenus drop down vertically below their entry (carousel)
+    float column_icon_scale; // Size of column icons relative to IconSize
+    float column_focus_scale; // Size of the selected column icon relative to the others (0 = automatic)
+    Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
+    WaveColorMode wave_color_mode;
+    Uint32 image_refresh; // Reload a URL background image this often, in ms (0 = at startup only)
+    char *image_json; // Path to the image URL in a JSON response, e.g. "data.0.path" (NULL: the URL is the image)
+    char *image_keywords; // Comma-separated keywords for {keywords} in the image URL; one is picked at random
+    float image_blur; // Blur radius in pixels at 1920 px screen width (Homepage's blur sizes)
+    float image_brightness; // 1.0 = unchanged
+    float image_saturation; // 1.0 = unchanged
+    float image_opacity; // Opacity of the image over the background color, 1.0 = opaque
+    SDL_Color wave_color;
+    bool context_entries; // Show background entries (sparkles, wallpapers) only for the background they apply to
+    bool wave_sparkles; // Twinkling specks of light drifting around the wave ribbons
+    bool wave_time_of_day; // Wave background brightness follows the time of day
+    bool sounds_enabled;
+    int sound_volume; // 0 to SDL_MIX_MAXVOLUME
+    bool visualizer_enabled; // Audio visualizer over the background
+    bool now_playing_enabled; // The track a media player is playing, under the clock
+    bool now_playing_album_art; // Cover art beside it
+    ModeVisualizer visualizer_style;
+    Uint8 visualizer_alpha;
+    float visualizer_height; // Fraction of the screen height, from the bottom
+    char *sound_paths[NUM_SOUNDS]; // NULL: use the default sound
+    char *config_file_path; // Kept so :togglesounds can save its state
     bool reset_on_back;
     bool mouse_select;
     bool inhibit_os_screensaver;

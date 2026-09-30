@@ -18,6 +18,7 @@ void scmd_sleep(void);
 #ifdef __unix__
 void make_directory(const char *directory);
 void print_usage(void);
+void reap_children(void);
 #endif
 
 // Windows-specific function prototypes
