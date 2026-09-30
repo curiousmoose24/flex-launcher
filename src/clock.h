@@ -11,7 +11,8 @@ typedef struct {
     SDL_Rect date_rect;
     TextInfo text_info;
     time_t current_time;
-    struct tm *time_info;
+    struct tm *time_info; // Points to time_buffer once the time has been read
+    struct tm time_buffer; // A copy: localtime() returns a buffer that other calls (e.g. the Wave background) overwrite
     int x_offset_time;
     int x_offset_date;
     int y_offset;

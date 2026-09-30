@@ -2238,8 +2238,10 @@ int main(int argc, char *argv[])
                 update_web_background();
             if (config.screensaver_enabled)
                 update_screensaver();
+            // Render the clock on this thread: SDL_ttf isn't thread-safe, and the menus and
+            // the layout popup render text here too. It's two short strings once a minute.
             if (config.clock_enabled)
-                update_clock(false);
+                update_clock(true);
         }
         if (state.application_launching &&
         ticks.main - ticks.application_launched > config.application_timeout) {

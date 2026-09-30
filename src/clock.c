@@ -98,14 +98,19 @@ void get_time(Clock *clk)
         previous_day = clk->time_info->tm_mday;
     }
 
-    // Get current time
+    // Get current time, keeping a copy of it
     time(&clk->current_time);
-    clk->time_info = localtime(&clk->current_time);
-    
+    struct tm *now = localtime(&clk->current_time);
+    bool first = clk->time_info == NULL;
+    if (now == NULL)
+        return;
+    clk->time_buffer = *now;
+    clk->time_info = &clk->time_buffer;
+
     // Set render flags if time and/or date changed
-    if (clk->time_info == NULL || previous_min != clk->time_info->tm_min) {
+    if (first || previous_min != clk->time_info->tm_min) {
         clk->render_time = true;
-        if (clk->time_info == NULL || previous_day != clk->time_info->tm_mday)
+        if (first || previous_day != clk->time_info->tm_mday)
             clk->render_date = true;
     }
 }
