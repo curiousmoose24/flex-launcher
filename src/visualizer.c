@@ -43,8 +43,6 @@ extern Geometry geo;
 #define LINE_SUBDIVISIONS 8   // Spline points between two bands, so the curve has no corners
 #define LINE_POINTS ((NUM_BANDS - 1) * LINE_SUBDIVISIONS + 1)
 #define LINE_GRAVITY 2.5f      // How fast the line falls when the sound drops, in heights per second squared
-#define LINE_REST_TIME 2.0f    // Seconds the line lies on the floor after the sound ends
-#define LINE_FADE_TIME 1.0f    // Seconds it then takes to fade out
 #define LINE_WIDTH 0.0025f     // Half thickness of the line's glow, fraction of screen height
 #define BAR_GAP 0.25f          // Gap between bars, relative to the bar width
 #define CAPTURE_COMMAND "parec"
@@ -67,7 +65,7 @@ static bool running = false;
 static float bands[NUM_BANDS];      // Smoothed intensities, 0-1
 static float line_levels[NUM_BANDS]; // The Line style's heights, which fall under gravity
 static float line_speeds[NUM_BANDS]; // How fast each point of the line is falling
-static float silent_time = LINE_REST_TIME + LINE_FADE_TIME; // Seconds the line has lain on the floor (faded out at first)
+static bool line_hidden = true;     // The line has sunk out of sight (or hasn't appeared yet)
 static int band_start[NUM_BANDS];   // FFT bins of each band
 static int band_end[NUM_BANDS];
 static float band_center[NUM_BANDS]; // Center frequency of each band, in FFT bins
@@ -159,9 +157,8 @@ static void stop_capture()
     capture_fd = -1;
     running = false;
     memset(bands, 0, sizeof(bands));
-    memset(line_levels, 0, sizeof(line_levels));
     memset(line_speeds, 0, sizeof(line_speeds));
-    silent_time = LINE_REST_TIME + LINE_FADE_TIME;
+    line_hidden = true;
 #endif
 }
 
@@ -357,31 +354,45 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha, float elapsed)
     static float xs[NUM_BANDS], ys[NUM_BANDS];
     static float px[LINE_POINTS], py[LINE_POINTS];
 
-    // The line follows the sound up, but when it drops, each point falls under gravity,
-    // so when the sound ends the line collapses onto the floor
-    float highest = 0.0f;
+    float half = fmaxf((float) geo.screen_height * LINE_WIDTH, 1.5f);
+    float top = (float) area->y + half, bottom = (float) (area->y + area->h) - half;
+
+    // Heights below 0 are under the floor; this deep, the line is out of sight
+    float sunk = -2.0f * half / (bottom - top) - 0.01f;
+
+    // The line follows the sound up, and when it drops, each point falls under gravity.
+    // When the sound ends altogether, the line keeps falling, through the floor and out of sight.
+    float loudest = 0.0f;
+    for (int b = 0; b < NUM_BANDS; b++)
+        loudest = fmaxf(loudest, bands[b]);
+    bool silent = loudest < 0.01f;
+    if (line_hidden) {
+        if (silent)
+            return;
+        for (int b = 0; b < NUM_BANDS; b++) { // Rise from the floor
+            line_levels[b] = 0.0f;
+            line_speeds[b] = 0.0f;
+        }
+        line_hidden = false;
+    }
+    float highest = sunk;
     for (int b = 0; b < NUM_BANDS; b++) {
-        if (bands[b] >= line_levels[b]) {
-            line_levels[b] = bands[b];
+        float target = silent ? sunk : bands[b];
+        if (target >= line_levels[b]) {
+            line_levels[b] = target;
             line_speeds[b] = 0.0f;
         }
         else {
             line_speeds[b] += LINE_GRAVITY * elapsed;
-            line_levels[b] = fmaxf(line_levels[b] - line_speeds[b] * elapsed, bands[b]);
+            line_levels[b] = fmaxf(line_levels[b] - line_speeds[b] * elapsed, target);
         }
         highest = fmaxf(highest, line_levels[b]);
     }
-
-    // It lies on the floor for a moment, then fades out until the sound returns
-    silent_time = highest < 0.01f ? silent_time + elapsed : 0.0f;
-    float fade = 1.0f - (silent_time - LINE_REST_TIME) / LINE_FADE_TIME;
-    fade = fade > 1.0f ? 1.0f : fade;
-    if (fade <= 0.0f)
+    if (highest <= sunk) {
+        line_hidden = true;
         return;
-    alpha = (Uint8) ((float) alpha * fade);
+    }
 
-    float half = fmaxf((float) geo.screen_height * LINE_WIDTH, 1.5f);
-    float top = (float) area->y + half, bottom = (float) (area->y + area->h) - half;
     for (int b = 0; b < NUM_BANDS; b++) {
         // Average the neighboring bands for a gentle curve
         float sum = 0.0f;
@@ -406,7 +417,7 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha, float elapsed)
             float y = 0.5f * (2.0f * y1 + (y2 - y0) * t + (2.0f * y0 - 5.0f * y1 + 4.0f * y2 - y3) * t2 +
                               (3.0f * y1 - y0 - 3.0f * y2 + y3) * t3);
             px[n] = xs[b] + (xs[b + 1] - xs[b]) * t;
-            py[n++] = fminf(fmaxf(y, top), bottom); // The spline can overshoot a little
+            py[n++] = fmaxf(y, top); // The spline can overshoot a little
         }
     }
     px[n] = xs[NUM_BANDS - 1];
@@ -433,10 +444,13 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha, float elapsed)
             indices[count++] = a + 1; indices[count++] = c; indices[count++] = c + 1;
         }
     }
+    // Clip to the area, so the line disappears into its floor
     SDL_BlendMode mode;
     SDL_GetRenderDrawBlendMode(renderer, &mode);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_RenderSetClipRect(renderer, area);
     SDL_RenderGeometry(renderer, NULL, vertices, n * 3, indices, count);
+    SDL_RenderSetClipRect(renderer, NULL);
     SDL_SetRenderDrawBlendMode(renderer, mode);
 #else
     (void) area; (void) alpha;
