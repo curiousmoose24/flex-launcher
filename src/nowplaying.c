@@ -29,7 +29,7 @@ extern Clock *clk;
 // thread-safe). The flyout slides in from the screen edge when a track starts playing,
 // fades between tracks, and slides back out when playback stops. The track's cover art (the
 // player's mpris:artUrl, a file or a web address) is shown beside the text, on the side
-// toward the middle of the screen; the thread loads it and scales it to the line height.
+// above the text, left-justified with it; the thread loads it and scales it.
 
 #define POLL_INTERVAL 2000       // ms between checks
 #define MAX_TEXT_CHARS 512
@@ -42,8 +42,8 @@ extern Clock *clk;
 #define MAX_ART_URL_CHARS 2048
 #define MAX_ART_BYTES (20 * 1024 * 1024)
 #define ART_TIMEOUT_SECONDS 10L
-#define ART_SCALE 1.0f          // Cover art size, times the text's line height
-#define ART_GAP 0.3f            // Space between the art and the text, times the art size
+#define ART_SCALE 3.0f          // Cover art size, times the text's line height
+#define ART_GAP 0.1f            // Space between the art and the text, times the line height
 
 static SDL_Thread *poll_thread = NULL;
 static SDL_mutex *text_mutex = NULL;
@@ -486,12 +486,12 @@ static void draw_item(const Item *item, float slide, Uint8 alpha)
     if (item->text == NULL || alpha == 0)
         return;
 
-    // In place under the date, aligned like the clock, with the art on the side toward the
-    // middle of the screen; it slides in from the screen edge
+    // In place under the date, aligned like the clock, with the art above the text and
+    // left-justified with it; it slides in from the screen edge
     const SDL_Rect *r = &item->text_rect;
     int art_w = item->art != NULL ? art_size : 0;
-    int gap = item->art != NULL ? (int) ((float) art_size * ART_GAP) : 0;
-    int width = r->w + gap + art_w;
+    int art_h = item->art != NULL ? art_size + (int) ((float) art_size / ART_SCALE * ART_GAP) : 0;
+    int width = r->w > art_w ? r->w : art_w;
     int line_y = config.clock_show_date ? clk->date_rect.y + clk->y_advance : clk->time_rect.y + clk->y_advance;
     int in_x, out_x;
     if (config.clock_alignment == ALIGNMENT_LEFT) {
@@ -503,16 +503,15 @@ static void draw_item(const Item *item, float slide, Uint8 alpha)
         out_x = geo.screen_width;
     }
     int x = (int) ((float) out_x + (float) (in_x - out_x) * slide);
-    int text_x = config.clock_alignment == ALIGNMENT_LEFT ? x : x + art_w + gap;
-    SDL_Rect dst = {text_x, line_y, r->w, r->h};
-    SDL_SetTextureAlphaMod(item->text, alpha);
-    SDL_RenderCopy(renderer, item->text, NULL, &dst);
     if (item->art != NULL) {
-        int art_x = config.clock_alignment == ALIGNMENT_LEFT ? x + r->w + gap : x;
-        SDL_Rect art_dst = {art_x, line_y + (r->h - art_size) / 2, art_size, art_size};
+        // The art's top lines up with the top of the text's letters
+        SDL_Rect art_dst = {x, line_y + clk->y_offset, art_size, art_size};
         SDL_SetTextureAlphaMod(item->art, alpha);
         SDL_RenderCopy(renderer, item->art, NULL, &art_dst);
     }
+    SDL_Rect dst = {x, line_y + art_h, r->w, r->h};
+    SDL_SetTextureAlphaMod(item->text, alpha);
+    SDL_RenderCopy(renderer, item->text, NULL, &dst);
 }
 
 // A function to draw the flyout for the current frame
