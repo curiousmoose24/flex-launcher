@@ -616,6 +616,9 @@ Turn the [Wave](#mode) background's sparkles on or off, and save the choice to t
 #### :togglevisualizer
 Turn the [audio visualizer](#visualizer) on or off, and save the choice to the `Enabled` setting in the `[Visualizer]` section of the config file. If the entry's icon has an `_off` variant next to it, the variant is shown while the visualizer is off.
 
+#### :togglenowplaying
+Turn the [now playing](#now-playing) flyout on or off, and save the choice to the `Enabled` setting in the `[Now Playing]` section of the config file. Turned off, the flyout slides out; turned back on, it slides in with the track that's playing. If the entry's icon has an `_off` variant next to it, the variant is shown while the flyout is off.
+
 #### :layouts
 Open a popup window listing the console layout schemes, with the current [Scheme](#scheme) marked. The popup takes all input while it is open: up and down (or [:up](#up) and [:down](#down)) move the selection, select chooses the highlighted scheme, saves it to the config file and closes the popup, and back, left or Escape (or [:back](#back)) closes it without changes.
 
@@ -855,7 +858,7 @@ Flex Launcher offers a simple clock widget which can show the current time and d
 
 ### Now Playing
 A "now playing" flyout can show the title and artist of the track a media player is playing, on a line under the [clock](#clock) in the clock's style (font, size, color, shadows, opacity and alignment). It slides in from the edge of the screen when a track starts playing, fades to the next track, and slides back out when playback stops or pauses. Players that support MPRIS (most Linux music and video players, and browsers) are asked every 2 seconds with `busctl` (Linux only). Long text is truncated. Settings in the `[Now Playing]` section:
-- `Enabled`: "true" or "false". Needs the clock to be enabled. Default: false
+- `Enabled`: "true" or "false". Needs the clock to be enabled. Can also be switched with [:togglenowplaying](#togglenowplaying). Default: false
 - `AlbumArt`: "true" or "false". Shows the track's cover art under the text, right-justified with it, at the clock's opacity, cropped to a square 4.2 times the height of the line. The art comes from the player (a file, or a web address, which needs the launcher to be built with libcurl). Covers that a sandboxed player (e.g. a Flatpak) saved in its own `/tmp` are found through the player's process when possible. Default: true
 
 ### Visualizer

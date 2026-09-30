@@ -52,6 +52,7 @@
 #define SCMD_TOGGLE_BACKGROUND ":togglebackground"
 #define SCMD_TOGGLE_SPARKLES ":togglesparkles"
 #define SCMD_TOGGLE_VISUALIZER ":togglevisualizer"
+#define SCMD_TOGGLE_NOW_PLAYING ":togglenowplaying"
 #define SCMD_WALLPAPER ":wallpaper"
 #define SCMD_LAYOUTS ":layouts"
 #define SCMD_HOME ":home"

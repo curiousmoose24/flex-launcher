@@ -55,6 +55,7 @@ static SDL_Surface *polled_art = NULL;         // Written by the poll thread (NU
 static bool art_changed = false;
 static int art_size = 0;                       // Pixels, set before the thread starts
 static char shown_text[MAX_TEXT_CHARS] = "";   // Main thread
+static bool app_running = false;               // Polling is paused while an application runs
 
 // A track as drawn: its text and cover art
 typedef struct {
@@ -352,14 +353,12 @@ static int poll_loop(void *data)
     return 0;
 }
 
-void init_now_playing()
+// A function to start checking the players; returns false if the flyout can't be shown
+static bool start_now_playing()
 {
-    if (!config.now_playing_enabled)
-        return;
     if (!config.clock_enabled || clk == NULL) {
         log_error("The now playing flyout needs the clock, which it sits under");
-        config.now_playing_enabled = false;
-        return;
+        return false;
     }
     if (config.now_playing_album_art) {
         art_size = (int) ((float) TTF_FontHeight(clk->text_info.font) * ART_SCALE);
@@ -372,15 +371,23 @@ void init_now_playing()
     }
     text_mutex = SDL_CreateMutex();
     SDL_AtomicSet(&quit_polling, 0);
-    SDL_AtomicSet(&polling_paused, 0);
+    SDL_AtomicSet(&polling_paused, app_running ? 1 : 0);
     poll_thread = SDL_CreateThread(poll_loop, "Now Playing Thread", NULL);
+    return true;
+}
+
+void init_now_playing()
+{
+    if (config.now_playing_enabled && !start_now_playing())
+        config.now_playing_enabled = false;
 }
 
 // A function to pause checking the players while an application is running
 void pause_now_playing(bool pause)
 {
+    app_running = pause;
     if (poll_thread != NULL)
-        SDL_AtomicSet(&polling_paused, pause ? 1 : 0);
+        SDL_AtomicSet(&polling_paused, (pause || !config.now_playing_enabled) ? 1 : 0);
 }
 
 // The slide position now: 0 is out of sight, 1 is in place (eased)
@@ -518,9 +525,10 @@ static void draw_item(const Item *item, float slide, Uint8 alpha)
 // A function to draw the flyout for the current frame
 void draw_now_playing()
 {
-    if (!config.now_playing_enabled || text_mutex == NULL)
+    if (text_mutex == NULL)
         return;
-    update_text();
+    if (config.now_playing_enabled)
+        update_text(); // Turned off, the flyout just finishes sliding out
     float slide = slide_position();
     if (slide <= 0.0f)
         return;
@@ -539,6 +547,31 @@ void draw_now_playing()
         }
     }
     draw_item(&current, slide, alpha);
+}
+
+// A function to turn the flyout on or off; returns false if it couldn't be turned on
+bool toggle_now_playing()
+{
+    if (!config.now_playing_enabled) {
+        if (text_mutex == NULL && !start_now_playing())
+            return false;
+        config.now_playing_enabled = true;
+        SDL_AtomicSet(&polling_paused, app_running ? 1 : 0);
+
+        // Show the last track found right away (the next check corrects it)
+        SDL_LockMutex(text_mutex);
+        text_changed = true;
+        SDL_UnlockMutex(text_mutex);
+    }
+    else {
+        config.now_playing_enabled = false;
+        SDL_AtomicSet(&polling_paused, 1);
+        if (visible)
+            start_slide(false);
+        shown_text[0] = '\0';
+    }
+    log_debug("Now playing %s", config.now_playing_enabled ? "enabled" : "disabled");
+    return true;
 }
 
 void quit_now_playing()

@@ -761,6 +761,8 @@ static bool entry_off(const Entry *entry)
         return !config.wave_sparkles;
     if (!strcmp(entry->cmd, SCMD_TOGGLE_VISUALIZER))
         return !config.visualizer_enabled;
+    if (!strcmp(entry->cmd, SCMD_TOGGLE_NOW_PLAYING))
+        return !config.now_playing_enabled;
     if (!strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND))
         return config.background_mode != BACKGROUND_WAVE;
     return false;
@@ -1171,7 +1173,8 @@ static void render_buttons(Menu *menu)
         entry->icon_selected = (entry->icon_selected_path != NULL) ? load_texture_from_file(entry->icon_selected_path) : NULL;
         entry->icon_off = NULL;
         if (!strcmp(entry->cmd, SCMD_TOGGLE_SOUNDS) || !strcmp(entry->cmd, SCMD_TOGGLE_BACKGROUND) ||
-        !strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES) || !strcmp(entry->cmd, SCMD_TOGGLE_VISUALIZER)) {
+        !strcmp(entry->cmd, SCMD_TOGGLE_SPARKLES) || !strcmp(entry->cmd, SCMD_TOGGLE_VISUALIZER) ||
+        !strcmp(entry->cmd, SCMD_TOGGLE_NOW_PLAYING)) {
             char *off_path = suffixed_path(entry->icon_path, OFF_SUFFIX);
             if (off_path != NULL) {
                 entry->icon_off = load_texture_from_file(off_path);
@@ -1509,6 +1512,15 @@ static void execute_command(const char *command)
             !save_config_setting(config.config_file_path, "Visualizer", SETTING_VISUALIZER_ENABLED,
                 config.visualizer_enabled ? "true" : "false"))
                 log_error("Could not save the visualizer setting to the config file");
+        }
+        else if (!strcmp(special_command, SCMD_TOGGLE_NOW_PLAYING)) {
+            if (!toggle_now_playing())
+                play_sound(SOUND_ERROR);
+            update_toggle_titles();
+            if (config.config_file_path != NULL &&
+            !save_config_setting(config.config_file_path, "Now Playing", SETTING_NOW_PLAYING_ENABLED,
+                config.now_playing_enabled ? "true" : "false"))
+                log_error("Could not save the now playing setting to the config file");
         }
         else if (!strcmp(special_command, SCMD_WALLPAPER)) {
             // Optional keywords, then show the picture background with a new image
