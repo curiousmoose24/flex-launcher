@@ -43,6 +43,7 @@ extern Geometry geo;
 #define LINE_SUBDIVISIONS 8   // Spline points between two bands, so the curve has no corners
 #define LINE_POINTS ((NUM_BANDS - 1) * LINE_SUBDIVISIONS + 1)
 #define LINE_GRAVITY 2.5f      // How fast the line falls when the sound drops, in heights per second squared
+#define LINE_WIPE_TIME 0.75f   // Seconds for the line to slide off the bottom when the sound ends
 #define LINE_WIDTH 0.0025f     // Half thickness of the line's glow, fraction of screen height
 #define BAR_GAP 0.25f          // Gap between bars, relative to the bar width
 #define CAPTURE_COMMAND "parec"
@@ -65,7 +66,11 @@ static bool running = false;
 static float bands[NUM_BANDS];      // Smoothed intensities, 0-1
 static float line_levels[NUM_BANDS]; // The Line style's heights, which fall under gravity
 static float line_speeds[NUM_BANDS]; // How fast each point of the line is falling
-static bool line_hidden = true;     // The line has sunk out of sight (or hasn't appeared yet)
+static bool line_hidden = true;     // The line has slid out of sight (or hasn't appeared yet)
+static bool line_wiping = false;    // The sound has ended: the line is sliding off the bottom
+static float wipe_offset = 0.0f;    // How far it has slid, in pixels
+static float wipe_speed = 0.0f;     // Pixels per second
+static float loudness = 0.0f;       // The loudest band in the newest audio, before smoothing
 static int band_start[NUM_BANDS];   // FFT bins of each band
 static int band_end[NUM_BANDS];
 static float band_center[NUM_BANDS]; // Center frequency of each band, in FFT bins
@@ -159,6 +164,7 @@ static void stop_capture()
     memset(bands, 0, sizeof(bands));
     memset(line_speeds, 0, sizeof(line_speeds));
     line_hidden = true;
+    line_wiping = false;
 #endif
 }
 
@@ -250,6 +256,7 @@ static void update_bands(float elapsed)
         float db = 20.0f * log10f(amplitude + 1e-9f);
         float level = (db - MIN_DB) / (MAX_DB - MIN_DB);
         level = level < 0.0f ? 0.0f : level > 1.0f ? 1.0f : level;
+        loudness = b == 0 ? level : fmaxf(loudness, level);
         float keep = level > bands[b] ? attack : release;
         bands[b] = bands[b] * keep + level * (1.0f - keep);
     }
@@ -357,15 +364,9 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha, float elapsed)
     float half = fmaxf((float) geo.screen_height * LINE_WIDTH, 1.5f);
     float top = (float) area->y + half, bottom = (float) (area->y + area->h) - half;
 
-    // Heights below 0 are under the floor; this deep, the line is out of sight
-    float sunk = -2.0f * half / (bottom - top) - 0.01f;
-
-    // The line follows the sound up, and when it drops, each point falls under gravity.
-    // When the sound ends altogether, the line keeps falling, through the floor and out of sight.
-    float loudest = 0.0f;
-    for (int b = 0; b < NUM_BANDS; b++)
-        loudest = fmaxf(loudest, bands[b]);
-    bool silent = loudest < 0.01f;
+    // The sound has ended when the newest audio is silent. (The smoothed bands take a moment
+    // to fall, which would flatten the line against the floor before it slides away.)
+    bool silent = loudness < 0.01f;
     if (line_hidden) {
         if (silent)
             return;
@@ -375,23 +376,46 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha, float elapsed)
         }
         line_hidden = false;
     }
-    float highest = sunk;
-    for (int b = 0; b < NUM_BANDS; b++) {
-        float target = silent ? sunk : bands[b];
-        if (target >= line_levels[b]) {
-            line_levels[b] = target;
+
+    // When the sound ends, the line keeps its last shape and slides down off the bottom of
+    // the screen, speeding up as it goes, like being wiped away. Sound returning stops it.
+    if (silent && !line_wiping) {
+        line_wiping = true;
+        wipe_offset = 0.0f;
+        wipe_speed = 0.0f;
+    }
+    else if (!silent && line_wiping) {
+        line_wiping = false;
+        for (int b = 0; b < NUM_BANDS; b++) { // Rise again from the floor
+            line_levels[b] = 0.0f;
             line_speeds[b] = 0.0f;
         }
-        else {
-            line_speeds[b] += LINE_GRAVITY * elapsed;
-            line_levels[b] = fmaxf(line_levels[b] - line_speeds[b] * elapsed, target);
+    }
+    if (line_wiping) {
+        float distance = (float) area->h + 2.0f * half; // Until the tallest point is below the bottom
+        wipe_speed += 2.0f * distance / (LINE_WIPE_TIME * LINE_WIPE_TIME) * elapsed;
+        wipe_offset += wipe_speed * elapsed;
+        if (wipe_offset >= distance) {
+            line_hidden = true;
+            line_wiping = false;
+            return;
         }
-        highest = fmaxf(highest, line_levels[b]);
     }
-    if (highest <= sunk) {
-        line_hidden = true;
-        return;
+
+    // The line follows the sound up, and when it drops, each point falls under gravity
+    else {
+        for (int b = 0; b < NUM_BANDS; b++) {
+            if (bands[b] >= line_levels[b]) {
+                line_levels[b] = bands[b];
+                line_speeds[b] = 0.0f;
+            }
+            else {
+                line_speeds[b] += LINE_GRAVITY * elapsed;
+                line_levels[b] = fmaxf(line_levels[b] - line_speeds[b] * elapsed, bands[b]);
+            }
+        }
     }
+    float shift = line_wiping ? wipe_offset : 0.0f;
 
     for (int b = 0; b < NUM_BANDS; b++) {
         // Average the neighboring bands for a gentle curve
@@ -404,7 +428,7 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha, float elapsed)
             }
         }
         xs[b] = (float) area->x + (float) area->w * (float) b / (float) (NUM_BANDS - 1);
-        ys[b] = bottom - sum / (float) count * (bottom - top);
+        ys[b] = bottom - sum / (float) count * (bottom - top) + shift;
     }
 
     // Catmull-Rom spline through the band points, so the line bends smoothly instead of
@@ -417,7 +441,7 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha, float elapsed)
             float y = 0.5f * (2.0f * y1 + (y2 - y0) * t + (2.0f * y0 - 5.0f * y1 + 4.0f * y2 - y3) * t2 +
                               (3.0f * y1 - y0 - 3.0f * y2 + y3) * t3);
             px[n] = xs[b] + (xs[b + 1] - xs[b]) * t;
-            py[n++] = fmaxf(y, top); // The spline can overshoot a little
+            py[n++] = fmaxf(y, top + shift); // The spline can overshoot a little
         }
     }
     px[n] = xs[NUM_BANDS - 1];
