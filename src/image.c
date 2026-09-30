@@ -456,14 +456,61 @@ SDL_Texture *render_glow_texture(SDL_Surface *text, SDL_Color color, int *paddin
     return load_texture(glow);
 }
 
+// A function to fit a background image to the screen like a wallpaper set to "fill": it's
+// cropped to the screen's shape around its center, and scaled down if it's larger than the
+// screen, which also saves memory and speeds up the filters. Smaller images aren't scaled up
+// here; the renderer stretches them to the screen.
+static SDL_Surface *fit_to_screen(SDL_Surface *surface)
+{
+    int sw = geo.screen_width, sh = geo.screen_height;
+    if (sw <= 0 || sh <= 0)
+        return surface;
+    SDL_Rect crop = {0, 0, surface->w, surface->h};
+    if ((long long) surface->w * sh > (long long) surface->h * sw) { // Wider than the screen
+        crop.w = (int) ((long long) surface->h * sw / sh);
+        crop.x = (surface->w - crop.w) / 2;
+    }
+    else { // Taller than the screen
+        crop.h = (int) ((long long) surface->w * sh / sw);
+        crop.y = (surface->h - crop.h) / 2;
+    }
+    int w = crop.w > sw ? sw : crop.w;
+    int h = crop.h > sh ? sh : crop.h;
+    if (crop.w == surface->w && crop.h == surface->h && w == surface->w && h == surface->h)
+        return surface;
+    if (w < 1 || h < 1)
+        return surface;
+
+    SDL_Surface *source = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_ARGB8888, 0);
+    SDL_Surface *fitted = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (source == NULL || fitted == NULL) {
+        SDL_FreeSurface(source);
+        SDL_FreeSurface(fitted);
+        return surface;
+    }
+#if SDL_VERSION_ATLEAST(2, 0, 16)
+    int error = SDL_SoftStretchLinear(source, &crop, fitted, NULL);
+#else
+    int error = SDL_BlitScaled(source, &crop, fitted, NULL);
+#endif
+    SDL_FreeSurface(source);
+    if (error < 0) {
+        SDL_FreeSurface(fitted);
+        return surface;
+    }
+    SDL_FreeSurface(surface);
+    return fitted;
+}
+
 // A function to apply the background image filters (ImageBlur, ImageBrightness, ImageSaturation
 // and ImageOpacity, like Homepage's background settings). Takes ownership of the surface and returns
-// the filtered surface. Blurred images are returned at a reduced size; they are stretched to the
+// the filtered surface, fitted to the screen first. Blurred images are returned at a reduced size; they are stretched to the
 // screen when drawn anyway.
 SDL_Surface *apply_background_filters(SDL_Surface *surface)
 {
     if (surface == NULL)
         return NULL;
+    surface = fit_to_screen(surface);
     bool blur = config.image_blur > 0.0f;
     if (!blur && config.image_brightness == 1.0f && config.image_saturation == 1.0f && config.image_opacity == 1.0f)
         return surface;

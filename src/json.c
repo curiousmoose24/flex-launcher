@@ -27,13 +27,17 @@ static const char *skip_string(const char *p)
     return *p == '"' ? p + 1 : NULL;
 }
 
+#define MAX_DEPTH 64 // Deeper nesting is treated as invalid, so a hostile response can't exhaust the stack
+
 // Skips any value; returns the position after it, or NULL on invalid JSON
-static const char *skip_value(const char *p)
+static const char *skip_value(const char *p, int depth)
 {
     p = skip_whitespace(p);
     if (*p == '"')
         return skip_string(p);
     if (*p == '{' || *p == '[') {
+        if (depth >= MAX_DEPTH)
+            return NULL;
         char close = *p == '{' ? '}' : ']';
         p = skip_whitespace(p + 1);
         if (*p == close)
@@ -47,7 +51,7 @@ static const char *skip_value(const char *p)
                     return NULL;
                 p++;
             }
-            if ((p = skip_value(p)) == NULL)
+            if ((p = skip_value(p, depth + 1)) == NULL)
                 return NULL;
             p = skip_whitespace(p);
             if (*p == close)
@@ -83,7 +87,7 @@ static const char *find_key(const char *p, const char *key, size_t key_length)
         p = skip_whitespace(p + 1);
         if (match)
             return p;
-        if ((p = skip_value(p)) == NULL)
+        if ((p = skip_value(p, 0)) == NULL)
             return NULL;
         p = skip_whitespace(p);
         if (*p != ',')
@@ -104,7 +108,7 @@ static const char *find_index(const char *p, int index)
         int count = 0;
         p = skip_whitespace(p + 1);
         while (*p != ']' && *p != '\0') {
-            if ((p = skip_value(p)) == NULL)
+            if ((p = skip_value(p, 0)) == NULL)
                 return NULL;
             count++;
             p = skip_whitespace(p);
@@ -117,7 +121,7 @@ static const char *find_index(const char *p, int index)
     }
     p = skip_whitespace(start + 1);
     for (int i = 0; i < index; i++) {
-        if (*p == ']' || (p = skip_value(p)) == NULL)
+        if (*p == ']' || (p = skip_value(p, 0)) == NULL)
             return NULL;
         p = skip_whitespace(p);
         if (*p != ',')

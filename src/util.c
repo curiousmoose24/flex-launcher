@@ -5,6 +5,9 @@
 #include <stdbool.h>
 #include <time.h>
 #include <getopt.h>
+#ifdef __unix__
+#include <unistd.h>
+#endif
 #include <SDL.h>
 #include <SDL_syswm.h>
 #include "launcher.h"
@@ -663,6 +666,16 @@ bool save_config_setting(const char *path, const char *section, const char *name
     size_t name_length = strlen(name);
     bool in_section = false, section_found = false, written = false;
 
+    // A last line without a newline is completed before anything is added after it
+    size_t contents_length = strlen(contents);
+    if (contents_length > 0 && contents[contents_length - 1] != '\n') {
+        char *completed = realloc(contents, contents_length + 2);
+        if (completed != NULL) {
+            contents = completed;
+            strcpy(contents + contents_length, "\n");
+        }
+    }
+
     // Blank lines are held back, so a new setting goes directly after the section's last line
     char *blank_start = NULL;
     size_t blank_length = 0;
@@ -721,10 +734,16 @@ bool save_config_setting(const char *path, const char *section, const char *name
         fprintf(out, "%s=%s\n", name, value);
     }
     free(contents);
-    bool ok = fclose(out) == 0;
+
+    // Flush to disk before replacing the config file, so a crash or power loss can't leave it empty
+    bool ok = fflush(out) == 0;
+#ifdef __unix__
+    ok = ok && fsync(fileno(out)) == 0;
+#endif
+    ok = (fclose(out) == 0) && ok;
     if (ok)
         ok = rename(tmp_path, path) == 0;
-    else
+    if (!ok)
         remove(tmp_path);
     return ok;
 }

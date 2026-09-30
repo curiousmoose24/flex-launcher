@@ -310,6 +310,8 @@ static void start_download()
 void init_web_background()
 {
 #ifdef HAVE_CURL
+    if (url != NULL) // Already initialized (e.g. by :wallpaper before switching to the picture background)
+        return;
     curl_global_init(CURL_GLOBAL_DEFAULT);
     SDL_AtomicSet(&download_state, DOWNLOAD_IDLE);
     SDL_AtomicSet(&abort_download, 0);

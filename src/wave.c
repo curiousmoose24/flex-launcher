@@ -22,6 +22,7 @@ extern Geometry geo;
 #define WAVE_SEGMENT_WIDTH 10.0f  // Pixels per segment, so curves stay smooth on large screens
 #define MIN_RIBBON_HALF 1.5f      // Pixels; thinner bands break up and shimmer, so they dim instead
 #define PI_F 3.14159265f
+#define PI_D 3.14159265358979323846
 
 // Base colors for each month when WaveColor=Auto (January first)
 static const SDL_Color month_colors[12] = {
@@ -115,14 +116,23 @@ static const Ribbon ribbons[] = {
     {0.59f, 0.070f, 0.8f, -0.16f, 2.2f, 0.0020f, 110}
 };
 
-// A function to calculate a ribbon's center line at horizontal position u (0-1), in pixels
-static float ribbon_center(const Ribbon *ribbon, float u, float seconds, float *angle_out)
+// A function to reduce a phase to one period. The animation runs for as long as the launcher
+// does (days on an HTPC), so phases are worked out in double precision and reduced before
+// the float math, which would otherwise lose precision and make the animation stutter.
+static float wrap_phase(double phase)
 {
-    float angle = 2.0f * PI_F * ribbon->frequency * u + ribbon->speed * seconds + ribbon->phase;
-    if (angle_out != NULL)
-        *angle_out = angle;
-    return (float) geo.screen_height * (ribbon->base_y + ribbon->amplitude * sinf(angle) +
-           0.3f * ribbon->amplitude * sinf(2.3f * angle + 0.7f * seconds));
+    return (float) fmod(phase, 2.0 * PI_D);
+}
+
+// A function to calculate a ribbon's center line at horizontal position u (0-1), in pixels.
+// twist_out receives the phase of the band's changing thickness.
+static float ribbon_center(const Ribbon *ribbon, float u, double seconds, float *twist_out)
+{
+    double angle = 2.0 * PI_D * ribbon->frequency * u + ribbon->speed * seconds + ribbon->phase;
+    if (twist_out != NULL)
+        *twist_out = wrap_phase(1.7 * angle - 0.4 * seconds);
+    return (float) geo.screen_height * (ribbon->base_y + ribbon->amplitude * sinf(wrap_phase(angle)) +
+           0.3f * ribbon->amplitude * sinf(wrap_phase(2.3 * angle + 0.7 * seconds)));
 }
 
 // A function to calculate the brightness for the current time of day (dimmer at night)
@@ -162,7 +172,7 @@ static void draw_gradient(SDL_Color top, SDL_Color bottom)
 }
 
 // A function to draw a ribbon as three rows of vertices (transparent edges, bright center)
-static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
+static void draw_ribbon(const Ribbon *ribbon, double seconds, SDL_Color color)
 {
     static SDL_Vertex vertices[(MAX_WAVE_SEGMENTS + 1) * 3];
     static int indices[MAX_WAVE_SEGMENTS * 12];
@@ -179,11 +189,11 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 
     for (int i = 0; i <= segments; i++) {
         float u = (float) i / (float) segments;
-        float angle;
-        float y = ribbon_center(ribbon, u, seconds, &angle);
+        float twist;
+        float y = ribbon_center(ribbon, u, seconds, &twist);
 
         // The band twists: its thickness varies along the wave
-        float half = h * ribbon->thickness * (0.55f + 0.45f * sinf(1.7f * angle - 0.4f * seconds));
+        float half = h * ribbon->thickness * (0.55f + 0.45f * sinf(twist));
 
         // Keep the band at least a few pixels wide, dimming it by as much as it was widened
         float alpha = (float) ribbon->alpha;
@@ -231,7 +241,7 @@ static void draw_ribbon(const Ribbon *ribbon, float seconds, SDL_Color color)
 #define SPARKLE_GLOW_OPACITY 0.1125f // Glow brightness relative to the speck
 
 typedef struct {
-    float born;          // Seconds (in the future while it rests between appearances)
+    double born;         // Seconds (in the future while it rests between appearances)
     float rest;          // Seconds it stays dark before appearing
     float life;          // Seconds
     float x;             // Birth position, fraction of screen width
@@ -265,7 +275,7 @@ static float random_centered()
     return (random_float(0.0f, 1.0f) + random_float(0.0f, 1.0f) + random_float(0.0f, 1.0f) - 1.5f) / 1.5f;
 }
 
-static void spawn_sparkle(Sparkle *sparkle, float seconds)
+static void spawn_sparkle(Sparkle *sparkle, double seconds)
 {
     sparkle->zoom = random_float(0.0f, 1.0f) < SPARKLE_ZOOM_CHANCE;
 
@@ -440,7 +450,7 @@ static SDL_Texture *create_sparkle_glow_texture()
 }
 
 // A function to draw the sparkles around the first (widest) ribbon
-static void draw_sparkles(float seconds, SDL_Color light)
+static void draw_sparkles(double seconds, SDL_Color light)
 {
     if (sparkle_texture == NULL) {
         sparkle_texture = create_sparkle_texture();
@@ -465,7 +475,7 @@ static void draw_sparkles(float seconds, SDL_Color light)
         SDL_SetTextureColorMod(sparkle_glow_texture, light.r, light.g, light.b);
     for (int i = 0; i < NUM_SPARKLES; i++) {
         Sparkle *sparkle = &sparkles[i];
-        float age = seconds - sparkle->born;
+        float age = (float) (seconds - sparkle->born);
         if (age < 0.0f) // Resting
             continue;
         if (age >= sparkle->life) {
@@ -520,13 +530,13 @@ void quit_wave_background()
 }
 
 // A function to draw the wave background for the current frame
-void draw_wave_background(Uint32 ticks)
+void draw_wave_background()
 {
 #if SDL_VERSION_ATLEAST(2, 0, 18)
     time_t t = time(NULL);
     struct tm *now = localtime(&t);
     float brightness = time_of_day_brightness(now);
-    float seconds = (float) ticks / 1000.0f;
+    double seconds = (double) SDL_GetTicks64() / 1000.0; // 64-bit: 32-bit ticks wrap after 49.7 days
 
     // Save the renderer state, since the gradient and ribbons use their own blending
     SDL_BlendMode mode;
@@ -554,8 +564,6 @@ void draw_wave_background(Uint32 ticks)
         draw_sparkles(seconds, light);
 
     SDL_SetRenderDrawBlendMode(renderer, mode);
-#else
-    (void) ticks;
 #endif
 }
 

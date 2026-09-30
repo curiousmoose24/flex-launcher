@@ -266,6 +266,8 @@ static void init_sdl()
         log_fatal("Could not initialize SDL\n%s", SDL_GetError());
 
     SDL_GetDesktopDisplayMode(0, &display_mode);
+    if (display_mode.refresh_rate <= 0) // Unknown to some video drivers
+        display_mode.refresh_rate = 60;
     geo.screen_width = display_mode.w;
     geo.screen_height = display_mode.h;
     refresh_period = 1000 / (Uint32) display_mode.refresh_rate;
@@ -738,9 +740,6 @@ static void carousel_move(Direction direction)
     carousel_anim_start = ticks.main;
 }
 
-// Get the icon to draw for an entry: the "off" icon of a toggle entry while its setting is off
-// (:togglesounds while sounds are off, :togglebackground while the Wave background is off),
-// otherwise the selected icon if available
 // A function to check whether a toggle entry is in its off state: sounds or sparkles off,
 // or the picture background showing instead of the Wave background
 static bool entry_off(const Entry *entry)
@@ -757,6 +756,8 @@ static bool entry_off(const Entry *entry)
 // A function to show the title that matches each toggle entry's state
 static void update_toggle_titles()
 {
+    if (!config.titles_enabled)
+        return;
     for (Menu *menu = config.first_menu; menu != NULL; menu = menu->next) {
         if (!menu->rendered)
             continue;
@@ -782,6 +783,8 @@ static void update_toggle_titles()
     }
 }
 
+// Get the icon to draw for an entry: the "off" icon of a toggle entry while it's in its off
+// state, otherwise the selected icon if available
 static SDL_Texture *entry_icon(Entry *entry, bool selected)
 {
     if (entry->icon_off != NULL && entry_off(entry))
@@ -1074,7 +1077,8 @@ static int load_menu(Menu *menu, bool set_back_menu, bool reset_position)
     if (set_back_menu)
         current_menu->back = previous_menu;
 
-    if (reset_position) {
+    // Start from the first entry if there's no remembered one (e.g. it was hidden by ContextEntries)
+    if (reset_position || current_menu->last_selected_entry == NULL) {
         current_entry = current_menu->first_entry;
         current_menu->root_entry = current_entry;
         current_menu->highlight_position = 0;
@@ -1149,17 +1153,18 @@ static void render_buttons(Menu *menu)
                 free(off_path);
             }
         }
+        entry->title_texture = NULL;
+        entry->title_glow = NULL;
+        entry->other_title_texture = NULL;
+        entry->other_title_glow = NULL;
+        entry->showing_off_title = false;
         if (config.titles_enabled) {
             SDL_Surface *title_surface = render_text(entry->title, &title_info, &entry->text_rect, &h);
-            entry->title_glow = NULL;
             if (config.title_glow && title_surface != NULL)
                 entry->title_glow = render_glow_texture(title_surface, config.title_glow_color, &entry->title_glow_padding);
             entry->title_texture = load_texture(title_surface);
 
             // A toggle's off title, swapped in by update_toggle_titles()
-            entry->other_title_texture = NULL;
-            entry->other_title_glow = NULL;
-            entry->showing_off_title = false;
             if (entry->title_off != NULL) {
                 int off_h;
                 SDL_Surface *off_surface = render_text(entry->title_off, &title_info, &entry->other_text_rect, &off_h);
@@ -1336,7 +1341,7 @@ static void draw_screen()
     SDL_RenderClear(renderer);
     if (!(state.application_launching && config.on_launch == ON_LAUNCH_BLANK) || launch_fading) {
         if (config.background_mode == BACKGROUND_WAVE)
-            draw_wave_background(ticks.main);
+            draw_wave_background();
         else if ((config.background_mode == BACKGROUND_IMAGE || config.background_mode == BACKGROUND_SLIDESHOW) &&
         background_texture != NULL)
             SDL_RenderCopy(renderer, background_texture, NULL, NULL);
@@ -1427,7 +1432,9 @@ static void execute_command(const char *command)
 
     // The layout popup takes all input while it is open (e.g. from the gamepad)
     if (layout_popup_active()) {
-        layout_popup_command(strtok(cmd, " "));
+        char *popup_command = strtok(cmd, " ");
+        if (popup_command != NULL)
+            layout_popup_command(popup_command);
         free(cmd);
         return;
     }
@@ -1825,6 +1832,7 @@ void quit(int status)
     if (config.quit_cmd != NULL) {
         execute_command(config.quit_cmd);
         free(config.quit_cmd);
+        config.quit_cmd = NULL; // cleanup() frees it too
     }
     cleanup();
     exit(status);
