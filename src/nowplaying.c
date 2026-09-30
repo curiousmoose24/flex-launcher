@@ -510,7 +510,7 @@ static void draw_item(const Item *item, float slide, Uint8 alpha)
         int font_height = TTF_FontHeight(clk->text_info.font);
         int gap = (int) ((float) font_height * ART_GAP);
         SDL_Rect art_dst = {x + width - art_size, line_y + font_height + gap, art_size, art_size};
-        SDL_SetTextureAlphaMod(item->art, alpha);
+        SDL_SetTextureAlphaMod(item->art, (Uint8) ((int) alpha * config.clock_font_color.a / 255)); // The clock's opacity
         SDL_RenderCopy(renderer, item->art, NULL, &art_dst);
     }
 }
