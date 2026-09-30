@@ -149,6 +149,7 @@ Config config = {
     .focus_scale                      = 1.0f,
     .focus_position                   = 0.5f,
     .unfocused_alpha                  = 0xFF,
+    .focused_brightness               = 0xFF,
     .titles_focused_only              = DEFAULT_TITLE_FOCUSED_ONLY,
     .title_glow                       = DEFAULT_TITLE_GLOW,
     .title_glow_color                 = {0xFF, 0xFF, 0xFF, 0x99},
@@ -810,6 +811,18 @@ static void draw_title_glow(Entry *entry, const SDL_Rect *text_rect, float stren
     render_copy_alpha(entry->title_glow, &glow_rect, (Uint8) ((float) config.title_glow_color.a * fminf(strength, 1.0f) + 0.5f));
 }
 
+// Draw an icon with a temporary opacity, dimmed towards FocusedBrightness as it nears the focus
+// (closeness 1 = selected)
+static void render_icon(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha, float closeness)
+{
+    Uint8 brightness = (Uint8) (255.0f - (float) (0xFF - config.focused_brightness) * closeness + 0.5f);
+    if (brightness < 0xFF)
+        SDL_SetTextureColorMod(texture, brightness, brightness, brightness);
+    render_copy_alpha(texture, rect, alpha);
+    if (brightness < 0xFF)
+        SDL_SetTextureColorMod(texture, 0xFF, 0xFF, 0xFF);
+}
+
 // Draw a texture with a temporary opacity
 static void render_copy_alpha(SDL_Texture *texture, const SDL_Rect *rect, Uint8 alpha)
 {
@@ -872,7 +885,7 @@ static void draw_carousel_buttons()
 
         Uint8 alpha = (Uint8) ((float) config.unfocused_alpha + (float) (0xFF - config.unfocused_alpha) * closeness + 0.5f);
         SDL_Texture *icon = entry_icon(entry, entry == current_entry);
-        render_copy_alpha(icon, &icon_rect, alpha);
+        render_icon(icon, &icon_rect, alpha, closeness);
 
         if (config.titles_enabled) {
             Uint8 title_alpha = config.titles_focused_only ? (Uint8) (255.0f * closeness + 0.5f) : alpha;
@@ -1017,7 +1030,7 @@ static void draw_column(float category_center, float category_closeness)
         };
         Uint8 alpha = (Uint8) (((float) config.unfocused_alpha + (float) (0xFF - config.unfocused_alpha) * closeness) *
                                category_closeness + 0.5f);
-        render_copy_alpha(entry_icon(entry, false), &icon_rect, alpha);
+        render_icon(entry_icon(entry, false), &icon_rect, alpha, closeness * category_closeness);
 
         // Column titles are shown to the right of the icons
         if (config.titles_enabled) {

@@ -205,6 +205,11 @@ int config_handler(void *user, const char *section, const char *name, const char
             parse_percent_fraction(value, 0.1f, 2.0f, &config.column_icon_scale);
         else if (MATCH(name, SETTING_COLUMN_FOCUS_SCALE))
             parse_percent_fraction(value, 1.0f, 3.0f, &config.column_focus_scale);
+        else if (MATCH(name, SETTING_FOCUSED_BRIGHTNESS)) {
+            float brightness;
+            if (parse_percent_fraction(value, 0.0f, 1.0f, &brightness))
+                config.focused_brightness = (Uint8) (brightness * 255.0f + 0.5f);
+        }
         else if (MATCH(name, SETTING_UNFOCUSED_OPACITY)) {
             float opacity;
             if (parse_percent_fraction(value, 0.0f, 1.0f, &opacity))

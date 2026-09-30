@@ -146,6 +146,7 @@ void debug_settings()
     log_debug("%-25s %.0f%%", SETTING_FOCUS_SCALE ":", (double) (config.focus_scale * 100.0f));
     log_debug("%-25s %.0f%%", SETTING_FOCUS_POSITION ":", (double) (config.focus_position * 100.0f));
     log_debug("%-25s %.0f%%", SETTING_UNFOCUSED_OPACITY ":", (double) config.unfocused_alpha * 100.0 / 255.0);
+    log_debug("%-25s %.0f%%", SETTING_FOCUSED_BRIGHTNESS ":", (double) config.focused_brightness * 100.0 / 255.0);
     DEBUG_STR(SETTING_LAYOUT_SCHEME, layout_id(config.layout_scheme));
     DEBUG_MODE(SETTING_SUBMENU_MODE, MODE_SETTING_SUBMENU, config.submenu_mode);
     log_debug("%-25s %.0f%%", SETTING_COLUMN_ICON_SIZE ":", (double) (config.column_icon_scale * 100.0f));

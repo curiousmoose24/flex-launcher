@@ -272,6 +272,7 @@ The settings in this section define the geometric layout of the launcher.
 - [FocusScale](#focusscale)
 - [FocusPosition](#focusposition)
 - [UnfocusedOpacity](#unfocusedopacity)
+- [FocusedBrightness](#focusedbrightness)
 - [SubmenuMode](#submenumode)
 - [ColumnIconSize](#columniconsize)
 - [ColumnFocusScale](#columnfocusscale)
@@ -313,6 +314,11 @@ Default: 100%
 The horizontal position of the center of the selected entry, in percent of the screen width. A value of 50% keeps the selection in the center of the screen; a value around 33% places it left of center. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
 
 Default: 50%
+
+##### FocusedBrightness
+The brightness of the selected icons in percent: the selected entry in the row, and in `Column` [SubmenuMode](#submenumode) the selected column entry. The brightness blends back to normal as entries scroll out of focus. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
+
+Default: 100%
 
 ##### UnfocusedOpacity
 The opacity of icons that are not selected, in percent. The opacity fades smoothly as entries scroll into and out of focus. Only applies when [ScrollMode](#scrollmode) is `Carousel`.
