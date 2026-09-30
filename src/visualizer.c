@@ -38,6 +38,8 @@ extern Geometry geo;
 #define HISTORY 480            // Spectrogram columns (8 seconds at 60 columns a second)
 #define COLUMN_RATE 60.0f      // Spectrogram columns a second
 #define NUM_BARS 64
+#define LINE_SMOOTHING 2       // Bands averaged on each side, for a smooth curve
+#define LINE_WIDTH 0.005f      // Half thickness of the line's glow, fraction of screen height
 #define BAR_GAP 0.25f          // Gap between bars, relative to the bar width
 #define CAPTURE_COMMAND "parec"
 
@@ -59,6 +61,7 @@ static bool running = false;
 static float bands[NUM_BANDS];      // Smoothed intensities, 0-1
 static int band_start[NUM_BANDS];   // FFT bins of each band
 static int band_end[NUM_BANDS];
+static float band_center[NUM_BANDS]; // Center frequency of each band, in FFT bins
 static float window[FFT_SIZE];
 static bool tables_ready = false;
 static Uint32 last_update = 0;
@@ -159,6 +162,7 @@ static void init_tables()
     for (int b = 0; b < NUM_BANDS; b++) {
         float low = MIN_FREQUENCY * powf(MAX_FREQUENCY / MIN_FREQUENCY, (float) b / NUM_BANDS);
         float high = MIN_FREQUENCY * powf(MAX_FREQUENCY / MIN_FREQUENCY, (float) (b + 1) / NUM_BANDS);
+        band_center[b] = sqrtf(low * high) / bin_width;
         band_start[b] = (int) (low / bin_width + 0.5f);
         band_end[b] = (int) (high / bin_width + 0.5f);
         if (band_end[b] <= band_start[b])
@@ -217,9 +221,19 @@ static void update_bands(float elapsed)
     float release = expf(-elapsed / RELEASE_TIME);
     for (int b = 0; b < NUM_BANDS; b++) {
         float peak = 0.0f;
+        if (band_end[b] - band_start[b] <= 1) {
+            // A band narrower than a bin (the bass): interpolate between the nearest bins,
+            // so neighboring bands don't share one value and form steps
+            int k = (int) band_center[b];
+            float t = band_center[b] - (float) k;
+            float m0 = sqrtf(re[k] * re[k] + im[k] * im[k]);
+            float m1 = sqrtf(re[k + 1] * re[k + 1] + im[k + 1] * im[k + 1]);
+            float magnitude = m0 + (m1 - m0) * t;
+            peak = magnitude * magnitude;
+        }
         for (int k = band_start[b]; k < band_end[b]; k++) {
             float magnitude = re[k] * re[k] + im[k] * im[k];
-            if (magnitude > peak)
+            if (magnitude > peak && band_end[b] - band_start[b] > 1)
                 peak = magnitude;
         }
         float amplitude = sqrtf(peak) / (FFT_SIZE * 0.25f);
@@ -319,6 +333,69 @@ static void draw_bars(const SDL_Rect *area, Uint8 alpha)
     SDL_SetRenderDrawBlendMode(renderer, mode);
 }
 
+// A function to draw the spectrum as a single glowing line across the area, like a line graph:
+// low pitches on the left, rising with loudness from the bottom of the area
+static void draw_line(const SDL_Rect *area, Uint8 alpha)
+{
+#if SDL_VERSION_ATLEAST(2, 0, 18)
+    static SDL_Vertex vertices[NUM_BANDS * 3];
+    static int indices[(NUM_BANDS - 1) * 12];
+    float loudest = 0.0f;
+    for (int b = 0; b < NUM_BANDS; b++)
+        loudest = fmaxf(loudest, bands[b]);
+    if (loudest < 0.01f) // Hidden in silence
+        return;
+
+    float half = fmaxf((float) geo.screen_height * LINE_WIDTH, 1.5f);
+    SDL_Color edge = {0xC0, 0xB0, 0xFF, 0};
+    static float xs[NUM_BANDS], ys[NUM_BANDS], levels[NUM_BANDS];
+    for (int b = 0; b < NUM_BANDS; b++) {
+        // Average the neighboring bands for a smooth curve
+        float sum = 0.0f;
+        int count = 0;
+        for (int k = b - LINE_SMOOTHING; k <= b + LINE_SMOOTHING; k++) {
+            if (k >= 0 && k < NUM_BANDS) {
+                sum += bands[k];
+                count++;
+            }
+        }
+        levels[b] = sum / (float) count;
+        xs[b] = (float) area->x + (float) area->w * (float) b / (float) (NUM_BANDS - 1);
+        ys[b] = (float) (area->y + area->h) - half - levels[b] * (float) (area->h - 2.0f * half);
+    }
+    for (int b = 0; b < NUM_BANDS; b++) {
+        // Thicken the line across its direction, so steep parts are as thick as flat ones
+        int before = b > 0 ? b - 1 : b, after = b < NUM_BANDS - 1 ? b + 1 : b;
+        float dx = xs[after] - xs[before], dy = ys[after] - ys[before];
+        float length = sqrtf(dx * dx + dy * dy);
+        float nx = -dy / length * half, ny = dx / length * half;
+
+        // Louder parts of the line are brighter and whiter
+        Uint32 color = intensity_color(0.4f + 0.6f * levels[b]);
+        SDL_Color center = {(color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF,
+                            (Uint8) fminf((float) alpha * (1.2f + 0.8f * levels[b]), 255.0f)};
+        vertices[b * 3] = (SDL_Vertex) {{xs[b] - nx, ys[b] - ny}, edge, {0.0f, 0.0f}};
+        vertices[b * 3 + 1] = (SDL_Vertex) {{xs[b], ys[b]}, center, {0.0f, 0.0f}};
+        vertices[b * 3 + 2] = (SDL_Vertex) {{xs[b] + nx, ys[b] + ny}, edge, {0.0f, 0.0f}};
+    }
+    int n = 0;
+    for (int b = 0; b < NUM_BANDS - 1; b++) {
+        for (int row = 0; row < 2; row++) {
+            int a = b * 3 + row, c = a + 3;
+            indices[n++] = a; indices[n++] = c; indices[n++] = a + 1;
+            indices[n++] = a + 1; indices[n++] = c; indices[n++] = c + 1;
+        }
+    }
+    SDL_BlendMode mode;
+    SDL_GetRenderDrawBlendMode(renderer, &mode);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_RenderGeometry(renderer, NULL, vertices, NUM_BANDS * 3, indices, n);
+    SDL_SetRenderDrawBlendMode(renderer, mode);
+#else
+    (void) area; (void) alpha;
+#endif
+}
+
 // A function to start or stop the visualizer to match its setting
 void update_visualizer_state()
 {
@@ -354,6 +431,8 @@ void draw_visualizer()
     Uint8 alpha = config.visualizer_alpha;
     if (config.visualizer_style == VISUALIZER_BARS)
         draw_bars(&area, alpha);
+    else if (config.visualizer_style == VISUALIZER_LINE)
+        draw_line(&area, alpha);
     else {
         // Add columns at a steady rate, whatever the frame rate
         column_debt += elapsed * COLUMN_RATE;

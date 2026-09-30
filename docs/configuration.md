@@ -856,7 +856,7 @@ Flex Launcher offers a simple clock widget which can show the current time and d
 ### Visualizer
 An audio visualizer can be drawn over the background, below the menu, showing whatever is playing on the default audio output. It records the output's monitor with `parec` (PulseAudio or PipeWire, Linux only), and pauses while an application launched from the menu is running. Quiet sound is transparent, so only what's playing shows. Settings in the `[Visualizer]` section:
 - `Enabled`: "true" or "false". Can also be switched with [:togglevisualizer](#togglevisualizer). Default: false
-- `Style`: `Spectrogram` scrolls the last 8 seconds from right to left, with low pitches at the bottom and louder sounds brighter. `Bars` shows the current spectrum as bars rising from the bottom. Default: Spectrogram
+- `Style`: `Spectrogram` scrolls the last 8 seconds from right to left, with low pitches at the bottom and louder sounds brighter. `Bars` shows the current spectrum as bars rising from the bottom. `Line` shows it as a single glowing line across the screen, like a line graph, which is hidden in silence. Default: Spectrogram
 - `Opacity`: in percent. Default: 50%
 - `Height`: the height of the visualizer from the bottom of the screen, in percent of the screen height. Default: 100%
 

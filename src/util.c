@@ -39,7 +39,7 @@ static const char *mode_settings[][6] = {
     {"Big", "Little", "Auto", NULL, NULL},                // Date Format
     {"Paged", "Carousel", NULL, NULL, NULL},              // Scroll Mode
     {"Screen", "Column", NULL, NULL, NULL},               // Submenu Mode
-    {"Spectrogram", "Bars", NULL, NULL, NULL}             // Visualizer Style
+    {"Spectrogram", "Bars", "Line", NULL, NULL}           // Visualizer Style
 };
 
 // A function to handle the arguments from the command line

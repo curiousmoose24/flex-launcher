@@ -111,7 +111,8 @@ typedef enum {
 
 typedef enum {
     VISUALIZER_SPECTROGRAM,
-    VISUALIZER_BARS
+    VISUALIZER_BARS,
+    VISUALIZER_LINE
 } ModeVisualizer;
 
 typedef enum {
