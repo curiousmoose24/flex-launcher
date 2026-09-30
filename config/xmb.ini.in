@@ -1,0 +1,133 @@
+# An example PlayStation 3 XMB-style configuration: a carousel of categories with column
+# submenus, the Wave background, sparkles, a visualizer and a now playing flyout.
+# Copy it to your config file location (e.g. ~/.config/flex-launcher/config.ini) and edit the
+# menu commands for your applications. See docs/configuration.md for every setting.
+[General]
+DefaultMenu=Main
+VSync=true
+OnLaunch=Blank
+FadeTime=300
+
+[Background]
+Mode=Wave
+WaveColor=Sky
+WaveSparkles=true
+Image=https://wallhaven.cc/api/v1/search?q={keywords}&categories=100&purity=100&atleast={width}x{height}&ratios=16x9&sorting=random
+ImageJson=data.0.path
+ImageKeywords=nature, mountains, space, ocean, cityscape
+ImageBrightness=70
+ImageOpacity=70
+ContextEntries=true
+
+[Layout]
+Scheme=PS3
+MaxButtons=6
+ScrollMode=Carousel
+ScrollTime=150
+FocusScale=150%
+FocusPosition=33%
+UnfocusedOpacity=22%
+FocusedBrightness=80%
+IconSize=256
+IconSpacing=5%
+VCenter=30%
+SubmenuMode=Column
+ColumnIconSize=60%
+ColumnFocusScale=250%
+
+[Titles]
+Enabled=true
+Font=@FONT_PREFIX@OpenSans-Regular.ttf
+FontSize=45
+Padding=20
+FocusedOnly=true
+Glow=true
+GlowOpacity=60%
+
+[Highlight]
+Enabled=false
+
+[Scroll Indicators]
+Enabled=false
+
+[Sounds]
+Enabled=true
+Volume=50%
+
+[Visualizer]
+Enabled=true
+Style=Line
+Opacity=35%
+
+[Now Playing]
+Enabled=true
+AlbumArt=true
+
+[Clock]
+Enabled=true
+ShowDate=true
+Alignment=Right
+Font=@FONT_PREFIX@SourceSansPro-Regular.ttf
+FontSize=40
+Shadows=true
+Margin=5%
+Opacity=50%
+IncludeWeekday=true
+
+[Gamepad]
+Enabled=true
+LStickX-=:left
+LStickX+=:right
+LStickY-=:up
+LStickY+=:down
+ButtonA=:select
+ButtonB=:back
+ButtonDPadLeft=:left
+ButtonDPadRight=:right
+ButtonDPadUp=:up
+ButtonDPadDown=:down
+
+# Menu configurations
+[Main]
+Entry1=Video;@XMB_ICONS_PREFIX@video.svg;:submenu Video
+Entry2=Game;@XMB_ICONS_PREFIX@gamepad.svg;:submenu Game
+Entry3=Network;@XMB_ICONS_PREFIX@globe.svg;:submenu Network
+Entry4=Wallpaper;@XMB_ICONS_PREFIX@wallpaper.svg;:submenu Wallpaper
+Entry5=UI;@XMB_ICONS_PREFIX@ui.svg;:submenu UI
+Entry6=System;@XMB_ICONS_PREFIX@settings.svg;:submenu System
+
+[Video]
+Entry1=Kodi;@XMB_ICONS_PREFIX@kodi.svg;kodi
+Entry2=YouTube;@XMB_ICONS_PREFIX@youtube.svg;flatpak run rocks.shy.VacuumTube --fullscreen
+
+[Game]
+Entry1=Steam;@XMB_ICONS_PREFIX@steam.svg;steam -gamepadui
+Entry2=RetroDECK;@XMB_ICONS_PREFIX@controller.svg;flatpak run net.retrodeck.retrodeck
+Entry3=Moonlight;@XMB_ICONS_PREFIX@moon.svg;flatpak run com.moonlight_stream.Moonlight
+
+[Network]
+Entry1=Browser;@XMB_ICONS_PREFIX@web.svg;firefox
+
+[Wallpaper]
+DefaultEntry=2
+Entry1=Photos|Playstation 3;@XMB_ICONS_PREFIX@background.svg;:togglebackground
+Entry2=Sparkles;@XMB_ICONS_PREFIX@sparkles.svg;:togglesparkles
+Entry3=Nature;@XMB_ICONS_PREFIX@nature.svg;:togglekeyword nature
+Entry4=Mountains;@XMB_ICONS_PREFIX@mountains.svg;:togglekeyword mountains
+Entry5=Space;@XMB_ICONS_PREFIX@space.svg;:togglekeyword space
+Entry6=Ocean;@XMB_ICONS_PREFIX@ocean.svg;:togglekeyword ocean
+Entry7=City;@XMB_ICONS_PREFIX@city.svg;:togglekeyword cityscape
+Entry8=Surprise me;@XMB_ICONS_PREFIX@shuffle.svg;:wallpaper nature, mountains, space, ocean, cityscape
+Entry9=New wallpaper;@XMB_ICONS_PREFIX@refresh.svg;:wallpaper
+
+[UI]
+Entry1=Visualizer;@XMB_ICONS_PREFIX@visualizer.svg;:togglevisualizer
+Entry2=Now Playing;@XMB_ICONS_PREFIX@nowplaying.svg;:togglenowplaying
+Entry3=Sounds;@XMB_ICONS_PREFIX@sound.svg;:togglesounds
+Entry4=Layout;@XMB_ICONS_PREFIX@layout.svg;:layouts
+
+[System]
+Entry1=Terminal;@XMB_ICONS_PREFIX@terminal.svg;konsole
+Entry2=Shutdown;@XMB_ICONS_PREFIX@power.svg;:shutdown
+Entry3=Restart;@XMB_ICONS_PREFIX@restart.svg;:restart
+Entry4=Sleep;@XMB_ICONS_PREFIX@sleep.svg;:sleep

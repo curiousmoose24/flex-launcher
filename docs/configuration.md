@@ -30,6 +30,8 @@ Key1=value
 Key2=value
 ...
 ```
+An example PlayStation 3 XMB-style configuration, `xmb.ini`, is installed next to the default config file (e.g. `/usr/share/flex-launcher/xmb.ini`). It sets up a carousel of categories (Video, Game, Network, Wallpaper, UI and System) with column submenus, the `Wave` background, sparkles, the visualizer and the now playing flyout, using the white XMB icons in `assets/icons/xmb`. The UI category holds the [:togglevisualizer](#togglevisualizer), [:togglenowplaying](#togglenowplaying), [:togglesounds](#togglesounds) and [:layouts](#layouts) entries. Copy it to your config file location and change the menu commands to your applications.
+
 A line can be commented out by using the # character at the beginning of the line, which will cause the line to be ignored by the program. In-line comments are not allowable. Here are a few things to note about the configuration settings for Flex Launcher:
 - All keys and values are case sensitive.
 - Full UTF-8 character set is supported for titles.
