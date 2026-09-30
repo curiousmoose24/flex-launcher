@@ -17,6 +17,7 @@
 #include "webimage.h"
 #include "layouts.h"
 #include "visualizer.h"
+#include "nowplaying.h"
 #include "util.h"
 #include "debug.h"
 #include "clock.h"
@@ -172,6 +173,7 @@ Config config = {
     .wave_sparkles                    = DEFAULT_WAVE_SPARKLES,
     .context_entries                  = DEFAULT_CONTEXT_ENTRIES,
     .visualizer_enabled               = DEFAULT_VISUALIZER_ENABLED,
+    .now_playing_enabled              = DEFAULT_NOW_PLAYING_ENABLED,
     .visualizer_style                 = VISUALIZER_SPECTROGRAM,
     .visualizer_alpha                 = 128,
     .visualizer_height                = 1.0f,
@@ -394,6 +396,7 @@ static void cleanup()
     quit_layout_popup();
     quit_wave_background();
     quit_visualizer();
+    quit_now_playing();
     SDL_WaitThread(Slideshowhread, NULL);
     SDL_WaitThread(clock_thread, NULL);
     
@@ -1387,11 +1390,12 @@ static void draw_screen()
         if (config.scroll_indicators && !carousel_active() && current_menu->page > 0)
             SDL_RenderCopyEx(renderer, scroll->texture, NULL, &scroll->rect_left, 0, NULL, SDL_FLIP_HORIZONTAL);
 
-        // Draw clock
+        // Draw clock, and what's playing under it
         if (config.clock_enabled) {
             SDL_RenderCopy(renderer, clk->time_texture, NULL, &clk->time_rect);
             if (config.clock_show_date)
                 SDL_RenderCopy(renderer, clk->date_texture, NULL, &clk->date_rect);
+            draw_now_playing();
         }
 
         // Draw highlight
@@ -1817,6 +1821,7 @@ static inline void pre_launch()
 {
     pause_sounds(true);
     pause_visualizer(true);
+    pause_now_playing(true);
     if (gamepads != NULL)
         disconnect_gamepad(-1, true, false);
 
@@ -1845,6 +1850,7 @@ static inline void post_launch()
     start_fade_in();
     pause_sounds(false);
     pause_visualizer(false);
+    pause_now_playing(false);
 
 #ifdef _WIN32
     SDL_EventState(SDL_SYSWMEVENT, SDL_DISABLE);
@@ -2112,6 +2118,7 @@ int main(int argc, char *argv[])
         init_clock(clk);
         ticks.clock_update = ticks.main;
     }
+    init_now_playing();
     
     // Render highlight
     if (config.highlight) {

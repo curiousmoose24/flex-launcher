@@ -22,6 +22,8 @@ set(SOURCES
   layouts.h
   visualizer.c
   visualizer.h
+  nowplaying.c
+  nowplaying.h
 )
 if (UNIX)
   add_executable(${EXECUTABLE_TITLE} ${SOURCES})

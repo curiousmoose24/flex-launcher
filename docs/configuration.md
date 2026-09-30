@@ -853,6 +853,10 @@ Transparent backgrounds can be used to implement animated backgrounds in combina
 ### Custom Widgets
 Flex Launcher offers a simple clock widget which can show the current time and date. For more advanced functionality, you can combine a transparent background with a third party widget program. For example, you can have a widget that displays weather, news, etc. in addition to the time. [Rainmeter](https://www.rainmeter.net/) is a popular option on Windows, and [Conky](https://github.com/brndnmtthws/conky) for Linux.
 
+### Now Playing
+A "now playing" flyout can show the title and artist of the track a media player is playing, on a line under the [clock](#clock) in the clock's style (font, size, color, shadows, opacity and alignment). It slides in from the edge of the screen when a track starts playing, fades to the next track, and slides back out when playback stops or pauses. Players that support MPRIS (most Linux music and video players, and browsers) are asked every 2 seconds with `busctl` (Linux only). Long text is truncated. Settings in the `[Now Playing]` section:
+- `Enabled`: "true" or "false". Needs the clock to be enabled. Default: false
+
 ### Visualizer
 An audio visualizer can be drawn over the background, below the menu, showing whatever is playing on the default audio output. It records the output's monitor with `parec` (PulseAudio or PipeWire, Linux only), and pauses while an application launched from the menu is running. Quiet sound is transparent, so only what's playing shows. Settings in the `[Visualizer]` section:
 - `Enabled`: "true" or "false". Can also be switched with [:togglevisualizer](#togglevisualizer). Default: false

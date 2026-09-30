@@ -192,6 +192,7 @@ void debug_settings()
     log_debug("======================== Sounds ========================\n");
     DEBUG_BOOL(SETTING_SOUNDS_ENABLED, config.sounds_enabled);
     log_debug("%-25s %s", "Visualizer:", config.visualizer_enabled ? "true" : "false");
+    log_debug("%-25s %s", "Now Playing:", config.now_playing_enabled ? "true" : "false");
     DEBUG_MODE(SETTING_VISUALIZER_STYLE, MODE_SETTING_VISUALIZER, config.visualizer_style);
     log_debug("%-25s %.0f%%", SETTING_VISUALIZER_OPACITY ":", (double) config.visualizer_alpha * 100.0 / 255.0);
     log_debug("%-25s %.0f%%", SETTING_VISUALIZER_HEIGHT ":", (double) (config.visualizer_height * 100.0f));
