@@ -43,7 +43,7 @@ extern Geometry geo;
 #define LINE_SUBDIVISIONS 8   // Spline points between two bands, so the curve has no corners
 #define LINE_POINTS ((NUM_BANDS - 1) * LINE_SUBDIVISIONS + 1)
 #define LINE_GRAVITY 2.5f      // How fast the line falls when the sound drops, in heights per second squared
-#define LINE_WIPE_TIME 0.75f   // Seconds for the line to slide off the bottom when the sound ends
+#define LINE_WIPE_TIME 2.0f    // Seconds for the line to slide off the bottom when the sound ends
 #define LINE_WIDTH 0.0025f     // Half thickness of the line's glow, fraction of screen height
 #define BAR_GAP 0.25f          // Gap between bars, relative to the bar width
 #define CAPTURE_COMMAND "parec"
