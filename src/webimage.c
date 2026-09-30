@@ -89,6 +89,102 @@ static void append_keyword(char *buffer, size_t size)
     }
 }
 
+// Find a keyword's position in a comma-separated list, ignoring case and spaces around it;
+// returns the index, or -1
+static int keyword_index(const char *list, const char *keyword, size_t keyword_length)
+{
+    if (list == NULL)
+        return -1;
+    const char *start = list;
+    for (int i = 0; ; i++) {
+        const char *end = strchr(start, ',');
+        if (end == NULL)
+            end = start + strlen(start);
+        const char *a = start, *b = end;
+        while (a < b && (*a == ' ' || *a == '\t'))
+            a++;
+        while (b > a && (b[-1] == ' ' || b[-1] == '\t'))
+            b--;
+        if ((size_t) (b - a) == keyword_length && !SDL_strncasecmp(a, keyword, keyword_length))
+            return i;
+        if (*end == '\0')
+            return -1;
+        start = end + 1;
+    }
+}
+
+// Trim spaces around a keyword; returns its start and sets its length
+static const char *trim_keyword(const char *keyword, size_t *length)
+{
+    while (*keyword == ' ')
+        keyword++;
+    *length = strlen(keyword);
+    while (*length > 0 && keyword[*length - 1] == ' ')
+        (*length)--;
+    return keyword;
+}
+
+// A function to check whether a keyword is one of the ImageKeywords
+bool has_keyword(const char *keyword)
+{
+    size_t length;
+    keyword = trim_keyword(keyword, &length);
+    return length > 0 && keyword_index(config.image_keywords, keyword, length) >= 0;
+}
+
+// A function to add a keyword to the ImageKeywords, or remove it, and save them to the config
+// file (:togglekeyword); returns false if it's the last keyword, which stays
+bool toggle_keyword(const char *keyword)
+{
+    size_t length;
+    keyword = trim_keyword(keyword, &length);
+    if (length == 0)
+        return false;
+    const char *list = config.image_keywords != NULL ? config.image_keywords : "";
+    int index = keyword_index(config.image_keywords, keyword, length);
+    char *keywords = malloc(strlen(list) + length + 3);
+    if (keywords == NULL)
+        return false;
+    keywords[0] = '\0';
+    if (index < 0) {
+        // Add it at the end
+        strcpy(keywords, list);
+        if (keywords[0] != '\0')
+            strcat(keywords, ", ");
+        strncat(keywords, keyword, length);
+    }
+    else {
+        // Rebuild the list without it
+        const char *start = list;
+        for (int i = 0; ; i++) {
+            const char *end = strchr(start, ',');
+            if (end == NULL)
+                end = start + strlen(start);
+            while (start < end && (*start == ' ' || *start == '\t'))
+                start++;
+            if (i != index && end > start) {
+                if (keywords[0] != '\0')
+                    strcat(keywords, ", ");
+                strncat(keywords, start, (size_t) (end - start));
+            }
+            if (*end == '\0')
+                break;
+            start = end + 1;
+        }
+        if (keywords[0] == '\0') {
+            free(keywords);
+            return false;
+        }
+    }
+    free(config.image_keywords);
+    config.image_keywords = keywords;
+    log_debug("Wallpaper keywords: %s", keywords);
+    if (config.config_file_path != NULL &&
+    !save_config_setting(config.config_file_path, "Background", SETTING_IMAGE_KEYWORDS, keywords))
+        log_error("Could not save the wallpaper keywords to the config file");
+    return true;
+}
+
 // A function to replace {width}, {height} and {keywords} in the URL
 static char *expand_url(const char *template)
 {

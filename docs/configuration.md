@@ -607,6 +607,9 @@ Move the highlight cursor right.
 #### :wallpaper
 Download a new background image now, when [Image](#image) is a URL. Optional keywords after the command replace [ImageKeywords](#imagekeywords) and are saved to the config file, so menu entries can pick a wallpaper genre, e.g. `Entry1=Space;space.svg;:wallpaper space` or `:wallpaper nature, mountains`. If the `Wave` background is showing, the launcher switches to the picture background.
 
+#### :togglekeyword
+Add a keyword to [ImageKeywords](#imagekeywords), or remove it if it's already there, and save them to the config file, so menu entries can turn wallpaper categories on and off, e.g. `Entry1=Space;space.svg;:togglekeyword space`. Each new image is picked from one of the keywords that are on, at random. The last keyword can't be removed. Keywords are matched ignoring case. If the entry's icon has an `_off` variant next to it, the variant is shown while the keyword is off.
+
 #### :togglebackground
 Switch between the `Wave` background and the picture background, and save the choice to the `Mode` setting in the `[Background]` section of the config file. The picture background is `Image` or `Slideshow`: the mode the launcher started in, or, when it started in `Wave` mode, `Image` if the [Image](#image) setting is set, otherwise `Slideshow` if [SlideshowDirectory](#slideshowdirectory) is set. The screen fades in from black when switching. If the entry's icon has an `_off` variant next to it (e.g. `background.svg` and `background_off.svg`), the variant is shown while the picture background is on.
 
