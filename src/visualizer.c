@@ -42,6 +42,9 @@ extern Geometry geo;
 #define LINE_SMOOTHING 2       // Bands averaged on each side, for a smooth curve
 #define LINE_SUBDIVISIONS 8   // Spline points between two bands, so the curve has no corners
 #define LINE_POINTS ((NUM_BANDS - 1) * LINE_SUBDIVISIONS + 1)
+#define LINE_GRAVITY 2.5f      // How fast the line falls when the sound drops, in heights per second squared
+#define LINE_REST_TIME 2.0f    // Seconds the line lies on the floor after the sound ends
+#define LINE_FADE_TIME 1.0f    // Seconds it then takes to fade out
 #define LINE_WIDTH 0.0025f     // Half thickness of the line's glow, fraction of screen height
 #define BAR_GAP 0.25f          // Gap between bars, relative to the bar width
 #define CAPTURE_COMMAND "parec"
@@ -62,6 +65,9 @@ static unsigned int ring_head = 0; // Total samples written (wraps)
 static bool running = false;
 
 static float bands[NUM_BANDS];      // Smoothed intensities, 0-1
+static float line_levels[NUM_BANDS]; // The Line style's heights, which fall under gravity
+static float line_speeds[NUM_BANDS]; // How fast each point of the line is falling
+static float silent_time = LINE_REST_TIME + LINE_FADE_TIME; // Seconds the line has lain on the floor (faded out at first)
 static int band_start[NUM_BANDS];   // FFT bins of each band
 static int band_end[NUM_BANDS];
 static float band_center[NUM_BANDS]; // Center frequency of each band, in FFT bins
@@ -153,6 +159,9 @@ static void stop_capture()
     capture_fd = -1;
     running = false;
     memset(bands, 0, sizeof(bands));
+    memset(line_levels, 0, sizeof(line_levels));
+    memset(line_speeds, 0, sizeof(line_speeds));
+    silent_time = LINE_REST_TIME + LINE_FADE_TIME;
 #endif
 }
 
@@ -340,18 +349,36 @@ static void draw_bars(const SDL_Rect *area, Uint8 alpha)
 
 // A function to draw the spectrum as a single glowing white line across the area, like a line graph:
 // low pitches on the left, rising with loudness from the bottom of the area
-static void draw_line(const SDL_Rect *area, Uint8 alpha)
+static void draw_line(const SDL_Rect *area, Uint8 alpha, float elapsed)
 {
 #if SDL_VERSION_ATLEAST(2, 0, 18)
     static SDL_Vertex vertices[LINE_POINTS * 3];
     static int indices[(LINE_POINTS - 1) * 12];
     static float xs[NUM_BANDS], ys[NUM_BANDS];
     static float px[LINE_POINTS], py[LINE_POINTS];
-    float loudest = 0.0f;
-    for (int b = 0; b < NUM_BANDS; b++)
-        loudest = fmaxf(loudest, bands[b]);
-    if (loudest < 0.01f) // Hidden in silence
+
+    // The line follows the sound up, but when it drops, each point falls under gravity,
+    // so when the sound ends the line collapses onto the floor
+    float highest = 0.0f;
+    for (int b = 0; b < NUM_BANDS; b++) {
+        if (bands[b] >= line_levels[b]) {
+            line_levels[b] = bands[b];
+            line_speeds[b] = 0.0f;
+        }
+        else {
+            line_speeds[b] += LINE_GRAVITY * elapsed;
+            line_levels[b] = fmaxf(line_levels[b] - line_speeds[b] * elapsed, bands[b]);
+        }
+        highest = fmaxf(highest, line_levels[b]);
+    }
+
+    // It lies on the floor for a moment, then fades out until the sound returns
+    silent_time = highest < 0.01f ? silent_time + elapsed : 0.0f;
+    float fade = 1.0f - (silent_time - LINE_REST_TIME) / LINE_FADE_TIME;
+    fade = fade > 1.0f ? 1.0f : fade;
+    if (fade <= 0.0f)
         return;
+    alpha = (Uint8) ((float) alpha * fade);
 
     float half = fmaxf((float) geo.screen_height * LINE_WIDTH, 1.5f);
     float top = (float) area->y + half, bottom = (float) (area->y + area->h) - half;
@@ -361,7 +388,7 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha)
         int count = 0;
         for (int k = b - LINE_SMOOTHING; k <= b + LINE_SMOOTHING; k++) {
             if (k >= 0 && k < NUM_BANDS) {
-                sum += bands[k];
+                sum += line_levels[k];
                 count++;
             }
         }
@@ -452,7 +479,7 @@ void draw_visualizer()
     if (config.visualizer_style == VISUALIZER_BARS)
         draw_bars(&area, alpha);
     else if (config.visualizer_style == VISUALIZER_LINE)
-        draw_line(&area, alpha);
+        draw_line(&area, alpha, elapsed);
     else {
         // Add columns at a steady rate, whatever the frame rate
         column_debt += elapsed * COLUMN_RATE;
