@@ -34,11 +34,14 @@ extern Geometry geo;
 #define MAX_FREQUENCY 16000.0f
 #define MIN_DB -65.0f          // Quieter than this is transparent
 #define MAX_DB -12.0f          // Louder than this is full intensity
+#define ATTACK_TIME 0.03f      // Seconds for a band to rise to a peak, so the display doesn't flicker
 #define RELEASE_TIME 0.15f     // Seconds for a band to fall back after a peak
 #define HISTORY 480            // Spectrogram columns (8 seconds at 60 columns a second)
 #define COLUMN_RATE 60.0f      // Spectrogram columns a second
 #define NUM_BARS 64
 #define LINE_SMOOTHING 2       // Bands averaged on each side, for a smooth curve
+#define LINE_SUBDIVISIONS 8   // Spline points between two bands, so the curve has no corners
+#define LINE_POINTS ((NUM_BANDS - 1) * LINE_SUBDIVISIONS + 1)
 #define LINE_WIDTH 0.0025f     // Half thickness of the line's glow, fraction of screen height
 #define BAR_GAP 0.25f          // Gap between bars, relative to the bar width
 #define CAPTURE_COMMAND "parec"
@@ -218,6 +221,7 @@ static void update_bands(float elapsed)
     fft(re, im);
 
     // Band levels in decibels, relative to a full-scale sine through the window (gain 0.5)
+    float attack = expf(-elapsed / ATTACK_TIME);
     float release = expf(-elapsed / RELEASE_TIME);
     for (int b = 0; b < NUM_BANDS; b++) {
         float peak = 0.0f;
@@ -240,7 +244,8 @@ static void update_bands(float elapsed)
         float db = 20.0f * log10f(amplitude + 1e-9f);
         float level = (db - MIN_DB) / (MAX_DB - MIN_DB);
         level = level < 0.0f ? 0.0f : level > 1.0f ? 1.0f : level;
-        bands[b] = level > bands[b] ? level : bands[b] * release + level * (1.0f - release);
+        float keep = level > bands[b] ? attack : release;
+        bands[b] = bands[b] * keep + level * (1.0f - keep);
     }
 }
 
@@ -338,8 +343,10 @@ static void draw_bars(const SDL_Rect *area, Uint8 alpha)
 static void draw_line(const SDL_Rect *area, Uint8 alpha)
 {
 #if SDL_VERSION_ATLEAST(2, 0, 18)
-    static SDL_Vertex vertices[NUM_BANDS * 3];
-    static int indices[(NUM_BANDS - 1) * 12];
+    static SDL_Vertex vertices[LINE_POINTS * 3];
+    static int indices[(LINE_POINTS - 1) * 12];
+    static float xs[NUM_BANDS], ys[NUM_BANDS];
+    static float px[LINE_POINTS], py[LINE_POINTS];
     float loudest = 0.0f;
     for (int b = 0; b < NUM_BANDS; b++)
         loudest = fmaxf(loudest, bands[b]);
@@ -347,10 +354,9 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha)
         return;
 
     float half = fmaxf((float) geo.screen_height * LINE_WIDTH, 1.5f);
-    SDL_Color edge = {0xFF, 0xFF, 0xFF, 0};
-    static float xs[NUM_BANDS], ys[NUM_BANDS], levels[NUM_BANDS];
+    float top = (float) area->y + half, bottom = (float) (area->y + area->h) - half;
     for (int b = 0; b < NUM_BANDS; b++) {
-        // Average the neighboring bands for a smooth curve
+        // Average the neighboring bands for a gentle curve
         float sum = 0.0f;
         int count = 0;
         for (int k = b - LINE_SMOOTHING; k <= b + LINE_SMOOTHING; k++) {
@@ -359,35 +365,51 @@ static void draw_line(const SDL_Rect *area, Uint8 alpha)
                 count++;
             }
         }
-        levels[b] = sum / (float) count;
         xs[b] = (float) area->x + (float) area->w * (float) b / (float) (NUM_BANDS - 1);
-        ys[b] = (float) (area->y + area->h) - half - levels[b] * (float) (area->h - 2.0f * half);
+        ys[b] = bottom - sum / (float) count * (bottom - top);
     }
-    for (int b = 0; b < NUM_BANDS; b++) {
-        // Thicken the line across its direction, so steep parts are as thick as flat ones
-        int before = b > 0 ? b - 1 : b, after = b < NUM_BANDS - 1 ? b + 1 : b;
-        float dx = xs[after] - xs[before], dy = ys[after] - ys[before];
-        float length = sqrtf(dx * dx + dy * dy);
-        float nx = -dy / length * half, ny = dx / length * half;
 
-        // A white line at the visualizer's opacity
-        SDL_Color center = {0xFF, 0xFF, 0xFF, alpha};
-        vertices[b * 3] = (SDL_Vertex) {{xs[b] - nx, ys[b] - ny}, edge, {0.0f, 0.0f}};
-        vertices[b * 3 + 1] = (SDL_Vertex) {{xs[b], ys[b]}, center, {0.0f, 0.0f}};
-        vertices[b * 3 + 2] = (SDL_Vertex) {{xs[b] + nx, ys[b] + ny}, edge, {0.0f, 0.0f}};
-    }
+    // Catmull-Rom spline through the band points, so the line bends smoothly instead of
+    // in straight segments with corners
     int n = 0;
     for (int b = 0; b < NUM_BANDS - 1; b++) {
+        float y0 = ys[b > 0 ? b - 1 : b], y1 = ys[b], y2 = ys[b + 1], y3 = ys[b + 2 < NUM_BANDS ? b + 2 : b + 1];
+        for (int i = 0; i < LINE_SUBDIVISIONS; i++) {
+            float t = (float) i / LINE_SUBDIVISIONS, t2 = t * t, t3 = t2 * t;
+            float y = 0.5f * (2.0f * y1 + (y2 - y0) * t + (2.0f * y0 - 5.0f * y1 + 4.0f * y2 - y3) * t2 +
+                              (3.0f * y1 - y0 - 3.0f * y2 + y3) * t3);
+            px[n] = xs[b] + (xs[b + 1] - xs[b]) * t;
+            py[n++] = fminf(fmaxf(y, top), bottom); // The spline can overshoot a little
+        }
+    }
+    px[n] = xs[NUM_BANDS - 1];
+    py[n++] = ys[NUM_BANDS - 1];
+
+    // A soft white band around the curve: bright along the middle, fading to its edges.
+    // It's thickened across the curve's direction, so steep parts are as thick as flat ones.
+    SDL_Color edge = {0xFF, 0xFF, 0xFF, 0};
+    SDL_Color center = {0xFF, 0xFF, 0xFF, alpha};
+    for (int p = 0; p < n; p++) {
+        int before = p > 0 ? p - 1 : p, after = p < n - 1 ? p + 1 : p;
+        float dx = px[after] - px[before], dy = py[after] - py[before];
+        float length = sqrtf(dx * dx + dy * dy);
+        float nx = -dy / length * half, ny = dx / length * half;
+        vertices[p * 3] = (SDL_Vertex) {{px[p] - nx, py[p] - ny}, edge, {0.0f, 0.0f}};
+        vertices[p * 3 + 1] = (SDL_Vertex) {{px[p], py[p]}, center, {0.0f, 0.0f}};
+        vertices[p * 3 + 2] = (SDL_Vertex) {{px[p] + nx, py[p] + ny}, edge, {0.0f, 0.0f}};
+    }
+    int count = 0;
+    for (int p = 0; p < n - 1; p++) {
         for (int row = 0; row < 2; row++) {
-            int a = b * 3 + row, c = a + 3;
-            indices[n++] = a; indices[n++] = c; indices[n++] = a + 1;
-            indices[n++] = a + 1; indices[n++] = c; indices[n++] = c + 1;
+            int a = p * 3 + row, c = a + 3;
+            indices[count++] = a; indices[count++] = c; indices[count++] = a + 1;
+            indices[count++] = a + 1; indices[count++] = c; indices[count++] = c + 1;
         }
     }
     SDL_BlendMode mode;
     SDL_GetRenderDrawBlendMode(renderer, &mode);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_RenderGeometry(renderer, NULL, vertices, NUM_BANDS * 3, indices, n);
+    SDL_RenderGeometry(renderer, NULL, vertices, n * 3, indices, count);
     SDL_SetRenderDrawBlendMode(renderer, mode);
 #else
     (void) area; (void) alpha;
