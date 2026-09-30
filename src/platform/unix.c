@@ -50,7 +50,8 @@ static void strip_field_codes(char *cmd)
         if (cmd[i] == '%' && i > 0 && cmd[i - 1] == ' ')
             start = i;
         else if (start && i > start + 2 && cmd[i] != ' ') {
-            strcpy(cmd + start, cmd + i);
+            memmove(cmd + start, cmd + i, strlen(cmd + i) + 1); // The strings overlap
+            i = start - 1; // Look at the moved text again, which may start with another field code
             start = 0;
         }
     }
@@ -145,19 +146,21 @@ bool start_process(char *cmd, bool application)
                 NULL
             };
             execvp(file, (char* const*) args);
-            break;
+            _exit(127); // Never return into the launcher's code in the child
 
         // Parent process
         default:
-            if (!application) 
+            if (!application) {
+                free(exec);
                 return true;
-            int status;
+            }
 
             // Check to see if the shell successfully launched
+            int status = 0;
             SDL_Delay(10);
-            waitpid(child_pid, &status, WNOHANG);
-            if (WIFEXITED(status) && WEXITSTATUS(status) > 126) {
+            if (waitpid(child_pid, &status, WNOHANG) == child_pid && WIFEXITED(status) && WEXITSTATUS(status) > 126) {
                 log_error("Application failed to launch");
+                free(exec);
                 return false;
             }
             log_debug("Application launched successfully");
@@ -165,6 +168,13 @@ bool start_process(char *cmd, bool application)
     }
     free(exec);
     return true;
+}
+
+// A function to reap child processes that have exited (launched applications and :fork
+// commands), so they don't linger as zombie processes
+void reap_children()
+{
+    while (waitpid(-1, NULL, WNOHANG) > 0);
 }
 
 // A function to determine if a file is an image file
@@ -198,7 +208,13 @@ void scan_slideshow_directory(Slideshow *slideshow, const char *directory)
 
 void get_region(char *buffer)
 {
-    char *lang = getenv("LANG");
+    // Work on a copy: strtok would otherwise cut up the LANG environment variable itself,
+    // which launched applications inherit (e.g. "en_US.UTF-8" would become "en")
+    const char *env = getenv("LANG");
+    if (env == NULL)
+        return;
+    char lang[64];
+    copy_string(lang, env, sizeof(lang));
     char *token = strtok(lang, "_");
     if (token == NULL)
         return;

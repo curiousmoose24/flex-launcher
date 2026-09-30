@@ -2248,6 +2248,9 @@ int main(int argc, char *argv[])
                 set_draw_color();
             start_fade_in();
         }
+#ifdef __unix__
+        reap_children();
+#endif
         if (state.application_running)
             SDL_Delay(APPLICATION_WAIT_PERIOD);
         else
