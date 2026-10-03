@@ -16,6 +16,7 @@ title: Configuration
 3. [Creating Menus](#creating-menus)
     - [Special Commands](#special-commands)
     - [Desktop Files (Linux Only)](#desktop-files-linux-only)
+    - [Already Running Applications (KDE Plasma Only)](#already-running-applications-kde-plasma-only)
 4. [Clock](#clock)
 5. [Screensaver](#screensaver)
 6. [Hotkeys](#hotkeys)
@@ -658,6 +659,14 @@ Some .desktop files contain "Actions", which affect how the program is launched.
 ```
 Entry1=Steam;/path/to/steamicon.png;/usr/share/applications/steam.desktop;BigPicture
 ```
+
+### Already Running Applications (KDE Plasma Only)
+When you select an application that is already running, Flex Launcher brings its window to the front instead of starting a second instance. This requires KDE Plasma 6 and [kdotool](https://github.com/jinliu/kdotool). Without them, the application is launched as usual.
+
+A window is considered to belong to the application when:
+- Its window class, name or desktop file name matches the .desktop file's name (e.g. `org.kde.konsole`), its `StartupWMClass`, the app ID of a `flatpak run` command or a Flatpak launcher (e.g. `/var/lib/flatpak/exports/bin/tv.kodi.Kodi`), or the name of the executable
+- Its process runs in the Flatpak sandbox of that app ID, so Flatpak apps are found however their windows are named
+- Its process was started by the previous launch of the same menu entry, as long as Flex Launcher has been running since
 
 ## Clock
 Flex Launcher contains a clock widget, which displays the current time, and, optionally, the current date. The following settings may be used to control the behavior of the clock.
