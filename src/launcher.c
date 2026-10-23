@@ -167,6 +167,7 @@ Config config = {
     .fade_time                        = DEFAULT_FADE_TIME,
     .idle_fade_time                   = DEFAULT_IDLE_FADE_TIME*1000,
     .idle_speed                       = DEFAULT_IDLE_SPEED / 100.0f,
+    .idle_opacity                     = DEFAULT_IDLE_OPACITY / 100.0f,
     .wave_color_mode                  = WAVE_COLOR_MONTH,
     .image_refresh                    = 0,
     .image_json                       = NULL,
@@ -266,6 +267,7 @@ Uint32 repeat_period;
 // Idle state: after IdleFadeTime without input the UI fades out and the
 // background animation slows down, until the next input
 static bool idle_active = false;
+static float idle_progress = 0.0f; // 0: awake, 1: fully idle
 static float ui_opacity = 1.0f;
 static Uint32 idle_last_update = 0;
 static SDL_Texture *ui_texture = NULL; // The UI is drawn here while it's partly faded
@@ -1398,12 +1400,13 @@ static void update_idle()
         idle_active = true;
     }
     if (idle_active)
-        ui_opacity = fmaxf(ui_opacity - (float) elapsed / IDLE_FADE_OUT_TIME, 0.0f);
+        idle_progress = fminf(idle_progress + (float) elapsed / IDLE_FADE_OUT_TIME, 1.0f);
     else
-        ui_opacity = fminf(ui_opacity + (float) elapsed / IDLE_FADE_IN_TIME, 1.0f);
+        idle_progress = fmaxf(idle_progress - (float) elapsed / IDLE_FADE_IN_TIME, 0.0f);
 
-    // Slow the animation down along with the fade
-    set_wave_speed(config.idle_speed + (1.0f - config.idle_speed) * ui_opacity);
+    // Fade the UI down to IdleOpacity, and slow the animation down along with it
+    ui_opacity = 1.0f - (1.0f - config.idle_opacity) * idle_progress;
+    set_wave_speed(1.0f - (1.0f - config.idle_speed) * idle_progress);
 }
 
 // A function to go idle at once, as if IdleFadeTime had passed without input

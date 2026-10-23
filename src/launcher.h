@@ -357,6 +357,7 @@ typedef struct {
     Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
     Uint32 idle_fade_time; // Fade out the UI after this long without input, in ms (0 = off)
     float idle_speed; // Speed of the background animation while idle, 1.0 = unchanged
+    float idle_opacity; // Opacity of the UI while idle, 0.0 = hidden
     WaveColorMode wave_color_mode;
     Uint32 image_refresh; // Reload a URL background image this often, in ms (0 = at startup only)
     char *image_json; // Path to the image URL in a JSON response, e.g. "data.0.path" (NULL: the URL is the image)

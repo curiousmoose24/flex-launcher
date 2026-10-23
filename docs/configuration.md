@@ -61,6 +61,7 @@ The settings in this section control the general behavior of the launcher.
 - [FadeTime](#fadetime)
 - [IdleFadeTime](#idlefadetime)
 - [IdleSpeed](#idlespeed)
+- [IdleOpacity](#idleopacity)
 - [ResetOnBack](#resetonback)
 - [MouseSelect](#mouseselect)
 - [InhibitOSScreensaver](#inhibitosscreensaver)
@@ -97,7 +98,7 @@ The duration in milliseconds of a fade to black when an application is launched 
 Default: 0
 
 ##### IdleFadeTime
-The time in seconds without input after which Flex Launcher fades out its menus, titles, clock and other widgets, leaving only the background, and slows the background animation to [IdleSpeed](#idlespeed). Any key, gamepad button or mouse click brings them back. The [:idle](#idle) special command does the same at once. That first input only wakes the launcher, so it can't launch an entry you can't see. A value of 0 disables the feature.
+The time in seconds without input after which Flex Launcher fades its menus, titles, clock and other widgets down to [IdleOpacity](#idleopacity), and slows the background animation to [IdleSpeed](#idlespeed). Any key, gamepad button or mouse click brings them back. The [:idle](#idle) special command does the same at once. That first input only wakes the launcher, so it can't launch an entry you can't see. A value of 0 disables the feature.
 
 Default: 900
 
@@ -105,6 +106,11 @@ Default: 900
 The speed of the Wave background's ribbons and sparkles while the launcher is idle (see [IdleFadeTime](#idlefadetime)), as a percentage of normal speed. The animation slows down gradually as the menus fade out.
 
 Default: 25%
+
+##### IdleOpacity
+The opacity of the menus, titles, clock and other widgets while the launcher is idle (see [IdleFadeTime](#idlefadetime)), as a percentage. A value of 0% hides them completely.
+
+Default: 10%
 
 ##### WrapEntries
 Defines whether the highlight will wrap to the other side of the screen after reaching its leftmost or rightmost position. This setting is a boolean "true" or "false".

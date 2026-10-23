@@ -169,6 +169,8 @@ int config_handler(void *user, const char *section, const char *name, const char
         }
         else if (MATCH(name, SETTING_IDLE_SPEED))
             parse_percent_fraction(value, 0.0f, 1.0f, &config.idle_speed);
+        else if (MATCH(name, SETTING_IDLE_OPACITY))
+            parse_percent_fraction(value, 0.0f, 1.0f, &config.idle_opacity);
         else if (MATCH(name, SETTING_WRAP_ENTRIES))
             convert_bool(value, &config.wrap_entries);
         else if (MATCH(name, SETTING_RESET_ON_BACK))
