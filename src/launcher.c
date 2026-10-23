@@ -68,6 +68,7 @@ static void draw_screen(void);
 static void draw_ui(void);
 static void update_idle(void);
 static bool wake_from_idle(void);
+static void enter_idle(void);
 static void draw_faded_ui(void);
 static void start_fade_in(void);
 static void draw_black_overlay(Uint8 alpha);
@@ -1405,6 +1406,13 @@ static void update_idle()
     set_wave_speed(config.idle_speed + (1.0f - config.idle_speed) * ui_opacity);
 }
 
+// A function to go idle at once, as if IdleFadeTime had passed without input
+static void enter_idle()
+{
+    log_debug("Idle command, fading out the UI");
+    idle_active = true;
+}
+
 // A function to register input. Returns true if it woke the launcher from idle, in
 // which case the input should do nothing else: the user can't see what's selected
 static bool wake_from_idle()
@@ -1641,6 +1649,8 @@ static void execute_command(const char *command)
         }
         else if (!strcmp(special_command, SCMD_LAYOUTS))
             open_layout_popup();
+        else if (!strcmp(special_command, SCMD_IDLE))
+            enter_idle();
         else if (!strcmp(special_command, SCMD_HOME))
             load_menu(default_menu, false, true);
         else if (!strcmp(special_command, SCMD_BACK))

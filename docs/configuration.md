@@ -97,7 +97,7 @@ The duration in milliseconds of a fade to black when an application is launched 
 Default: 0
 
 ##### IdleFadeTime
-The time in seconds without input after which Flex Launcher fades out its menus, titles, clock and other widgets, leaving only the background, and slows the background animation to [IdleSpeed](#idlespeed). Any key, gamepad button or mouse click brings them back. That first input only wakes the launcher, so it can't launch an entry you can't see. A value of 0 disables the feature.
+The time in seconds without input after which Flex Launcher fades out its menus, titles, clock and other widgets, leaving only the background, and slows the background animation to [IdleSpeed](#idlespeed). Any key, gamepad button or mouse click brings them back. The [:idle](#idle) special command does the same at once. That first input only wakes the launcher, so it can't launch an entry you can't see. A value of 0 disables the feature.
 
 Default: 900
 
@@ -639,6 +639,9 @@ Turn the [now playing](#now-playing) flyout on or off, and save the choice to th
 
 #### :layouts
 Open a popup window listing the console layout schemes, with the current [Scheme](#scheme) marked. The popup takes all input while it is open: up and down (or [:up](#up) and [:down](#down)) move the selection, select chooses the highlighted scheme, saves it to the config file and closes the popup, and back, left or Escape (or [:back](#back)) closes it without changes.
+
+#### :idle
+Fade out the menus and widgets and slow the background animation at once, as the launcher does on its own after [IdleFadeTime](#idlefadetime) without input. Any input brings the menus back. This works even when `IdleFadeTime` is 0.
 
 #### :togglesounds
 Turn navigation sounds on or off, and save the choice to the `Enabled` setting in the `[Sounds]` section of the config file. Turning sounds on plays the select chime, and turning them off plays the falling "off" chime. If the entry's icon has an `_off` variant next to it (e.g. `sound.svg` and `sound_off.svg`), the variant is shown while sounds are off.
