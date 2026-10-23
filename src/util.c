@@ -162,6 +162,13 @@ int config_handler(void *user, const char *section, const char *name, const char
             if (fade_time >= 0)
                 config.fade_time = (Uint32) fade_time;
         }
+        else if (MATCH(name, SETTING_IDLE_FADE_TIME)) {
+            int idle_fade_time = atoi(value);
+            if (idle_fade_time >= 0)
+                config.idle_fade_time = 1000 * (Uint32) idle_fade_time;
+        }
+        else if (MATCH(name, SETTING_IDLE_SPEED))
+            parse_percent_fraction(value, 0.0f, 1.0f, &config.idle_speed);
         else if (MATCH(name, SETTING_WRAP_ENTRIES))
             convert_bool(value, &config.wrap_entries);
         else if (MATCH(name, SETTING_RESET_ON_BACK))

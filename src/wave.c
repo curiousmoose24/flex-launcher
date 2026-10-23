@@ -260,6 +260,11 @@ typedef struct {
 } Sparkle;
 
 static Sparkle sparkles[NUM_SPARKLES];
+
+// The animation clock, which runs slower while the launcher is idle
+static double animation_seconds = 0.0;
+static Uint64 animation_ticks = 0;
+static float animation_speed = 1.0f;
 static bool sparkles_ready = false;
 static SDL_Texture *sparkle_texture = NULL;
 static SDL_Texture *sparkle_glow_texture = NULL;
@@ -536,7 +541,13 @@ void draw_wave_background()
     time_t t = time(NULL);
     struct tm *now = localtime(&t);
     float brightness = time_of_day_brightness(now);
-    double seconds = (double) SDL_GetTicks64() / 1000.0; // 64-bit: 32-bit ticks wrap after 49.7 days
+    Uint64 ticks = SDL_GetTicks64(); // 64-bit: 32-bit ticks wrap after 49.7 days
+    if (animation_ticks == 0)
+        animation_seconds = (double) ticks / 1000.0;
+    else
+        animation_seconds += (double) (ticks - animation_ticks) / 1000.0 * animation_speed;
+    animation_ticks = ticks;
+    double seconds = animation_seconds;
 
     // Save the renderer state, since the gradient and ribbons use their own blending
     SDL_BlendMode mode;
@@ -565,6 +576,12 @@ void draw_wave_background()
 
     SDL_SetRenderDrawBlendMode(renderer, mode);
 #endif
+}
+
+// A function to set the speed of the ribbons and sparkles, 1.0 = normal
+void set_wave_speed(float speed)
+{
+    animation_speed = speed;
 }
 
 // A function to check whether the wave background can be drawn with this SDL version

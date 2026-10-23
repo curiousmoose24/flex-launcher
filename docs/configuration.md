@@ -58,6 +58,8 @@ The settings in this section control the general behavior of the launcher.
 - [FPSLimit](#fpslimit)
 - [OnLaunch](#onlaunch)
 - [FadeTime](#fadetime)
+- [IdleFadeTime](#idlefadetime)
+- [IdleSpeed](#idlespeed)
 - [ResetOnBack](#resetonback)
 - [MouseSelect](#mouseselect)
 - [InhibitOSScreensaver](#inhibitosscreensaver)
@@ -92,6 +94,16 @@ Default: Blank
 The duration in milliseconds of a fade to black when an application is launched (with [OnLaunch](#onlaunch) set to "Blank"), and of a fade in from black when the launcher starts and when an application exits. A value of 0 disables fading.
 
 Default: 0
+
+##### IdleFadeTime
+The time in seconds without input after which Flex Launcher fades out its menus, titles, clock and other widgets, leaving only the background, and slows the background animation to [IdleSpeed](#idlespeed). Any key, gamepad button or mouse click brings them back. That first input only wakes the launcher, so it can't launch an entry you can't see. A value of 0 disables the feature.
+
+Default: 900
+
+##### IdleSpeed
+The speed of the Wave background's ribbons and sparkles while the launcher is idle (see [IdleFadeTime](#idlefadetime)), as a percentage of normal speed. The animation slows down gradually as the menus fade out.
+
+Default: 25%
 
 ##### WrapEntries
 Defines whether the highlight will wrap to the other side of the screen after reaching its leftmost or rightmost position. This setting is a boolean "true" or "false".
