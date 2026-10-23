@@ -105,6 +105,9 @@ void debug_settings()
     DEBUG_MODE(SETTING_ON_LAUNCH, MODE_SETTING_ON_LAUNCH, config.on_launch);
     DEBUG_BOOL(SETTING_WRAP_ENTRIES, config.wrap_entries);
     DEBUG_INT(SETTING_FADE_TIME, (int) config.fade_time);
+    DEBUG_INT(SETTING_IDLE_FADE_TIME, (int) (config.idle_fade_time / 1000));
+    log_debug("%-25s %.0f%%", SETTING_IDLE_SPEED ":", (double) config.idle_speed * 100.0);
+    log_debug("%-25s %.0f%%", SETTING_IDLE_OPACITY ":", (double) config.idle_opacity * 100.0);
     DEBUG_BOOL(SETTING_RESET_ON_BACK, config.reset_on_back);
     DEBUG_BOOL(SETTING_MOUSE_SELECT, config.mouse_select);
     DEBUG_BOOL(SETTING_INHIBIT_OS_SCREENSAVER, config.inhibit_os_screensaver);
