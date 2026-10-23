@@ -35,6 +35,8 @@
 #define MIN_SCREENSAVER_IDLE_TIME 3
 #define MAX_SCREENSAVER_IDLE_TIME 900
 #define SCREENSAVER_TRANSITION_TIME 1500
+#define IDLE_FADE_OUT_TIME 3000.0f // ms to fade the UI out when idle
+#define IDLE_FADE_IN_TIME 300.0f   // ms to fade it back in after input
 #define APPLICATION_WAIT_PERIOD 100
 #define MIN_APPLICATION_TIMEOUT 3
 #define MAX_APPLICATION_TIMEOUT 30
@@ -352,6 +354,8 @@ typedef struct {
     float column_icon_scale; // Size of column icons relative to IconSize
     float column_focus_scale; // Size of the selected column icon relative to the others (0 = automatic)
     Uint32 fade_time; // Fade to/from black when launching/returning, in ms (0 = off)
+    Uint32 idle_fade_time; // Fade out the UI after this long without input, in ms (0 = off)
+    float idle_speed; // Speed of the background animation while idle, 1.0 = unchanged
     WaveColorMode wave_color_mode;
     Uint32 image_refresh; // Reload a URL background image this often, in ms (0 = at startup only)
     char *image_json; // Path to the image URL in a JSON response, e.g. "data.0.path" (NULL: the URL is the image)

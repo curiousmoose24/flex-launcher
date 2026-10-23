@@ -65,6 +65,10 @@ static void move_right(void);
 static void load_submenu(const char *submenu);
 static void load_back_menu(Menu *menu);
 static void draw_screen(void);
+static void draw_ui(void);
+static void update_idle(void);
+static bool wake_from_idle(void);
+static void draw_faded_ui(void);
 static void start_fade_in(void);
 static void draw_black_overlay(Uint8 alpha);
 static void handle_keypress(SDL_Keysym *key);
@@ -160,6 +164,8 @@ Config config = {
     .column_icon_scale                = 0.6f,
     .column_focus_scale               = 0.0f,
     .fade_time                        = DEFAULT_FADE_TIME,
+    .idle_fade_time                   = DEFAULT_IDLE_FADE_TIME*1000,
+    .idle_speed                       = DEFAULT_IDLE_SPEED / 100.0f,
     .wave_color_mode                  = WAVE_COLOR_MONTH,
     .image_refresh                    = 0,
     .image_json                       = NULL,
@@ -255,6 +261,13 @@ Geometry geo;
 Uint32 refresh_period;
 Uint32 delay_period;
 Uint32 repeat_period;
+
+// Idle state: after IdleFadeTime without input the UI fades out and the
+// background animation slows down, until the next input
+static bool idle_active = false;
+static float ui_opacity = 1.0f;
+static Uint32 idle_last_update = 0;
+static SDL_Texture *ui_texture = NULL; // The UI is drawn here while it's partly faded
 
 
 // A function to initialize SDL
@@ -396,6 +409,8 @@ static void cleanup()
     quit_web_background();
     quit_layout_popup();
     quit_wave_background();
+    if (ui_texture != NULL)
+        SDL_DestroyTexture(ui_texture);
     quit_visualizer();
     quit_now_playing();
     SDL_WaitThread(Slideshowhread, NULL);
@@ -1369,6 +1384,123 @@ static void draw_black_overlay(Uint8 alpha)
     SDL_SetRenderDrawColor(renderer, r, g, b, a);
 }
 
+// A function to fade the UI out when the launcher has been idle, and back in after input
+static void update_idle()
+{
+    Uint32 elapsed = ticks.main - idle_last_update;
+    if (elapsed > 100) // The first frame, or after an application
+        elapsed = 0;
+    idle_last_update = ticks.main;
+
+    if (!idle_active && config.idle_fade_time > 0 && ticks.main - ticks.last_input > config.idle_fade_time) {
+        log_debug("Launcher idle, fading out the UI");
+        idle_active = true;
+    }
+    if (idle_active)
+        ui_opacity = fmaxf(ui_opacity - (float) elapsed / IDLE_FADE_OUT_TIME, 0.0f);
+    else
+        ui_opacity = fminf(ui_opacity + (float) elapsed / IDLE_FADE_IN_TIME, 1.0f);
+
+    // Slow the animation down along with the fade
+    set_wave_speed(config.idle_speed + (1.0f - config.idle_speed) * ui_opacity);
+}
+
+// A function to register input. Returns true if it woke the launcher from idle, in
+// which case the input should do nothing else: the user can't see what's selected
+static bool wake_from_idle()
+{
+    ticks.last_input = ticks.main;
+    if (!idle_active)
+        return false;
+    log_debug("Input received, fading in the UI");
+    idle_active = false;
+    return true;
+}
+
+// A function to draw the UI, fading it as one layer while the launcher goes idle
+// or wakes up. The layer is drawn on a transparent texture, which holds premultiplied
+// colors, so it's composited with a premultiplied blend
+static void draw_faded_ui()
+{
+    if (ui_opacity <= 0.0f)
+        return;
+    if (ui_opacity < 1.0f && ui_texture == NULL && SDL_RenderTargetSupported(renderer)) {
+        ui_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET,
+                         geo.screen_width, geo.screen_height);
+        if (ui_texture != NULL)
+            SDL_SetTextureBlendMode(ui_texture, SDL_ComposeCustomBlendMode(
+                SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
+                SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD));
+    }
+
+    // Draw straight to the screen when fully shown, or if the layer can't be made
+    if (ui_opacity >= 1.0f || ui_texture == NULL) {
+        if (ui_opacity >= 0.5f)
+            draw_ui();
+        return;
+    }
+
+    Uint8 r, g, b, a;
+    SDL_GetRenderDrawColor(renderer, &r, &g, &b, &a);
+    SDL_SetRenderTarget(renderer, ui_texture);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+    SDL_RenderClear(renderer);
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    draw_ui();
+    SDL_SetRenderTarget(renderer, NULL);
+    Uint8 opacity = (Uint8) (ui_opacity * 255.0f + 0.5f);
+    SDL_SetTextureColorMod(ui_texture, opacity, opacity, opacity);
+    SDL_SetTextureAlphaMod(ui_texture, opacity);
+    SDL_RenderCopy(renderer, ui_texture, NULL, NULL);
+}
+
+// A function to draw the menu, clock and other widgets over the background
+static void draw_ui()
+{
+    // Draw scroll indicators (not in carousel mode: the row fills the screen edge to edge)
+    if (config.scroll_indicators && !carousel_active() &&
+    (current_menu->page*config.max_buttons + (unsigned int) geo.num_buttons) <= (current_menu->num_entries - 1))
+        SDL_RenderCopy(renderer, scroll->texture, NULL, &scroll->rect_right);
+
+    if (config.scroll_indicators && !carousel_active() && current_menu->page > 0)
+        SDL_RenderCopyEx(renderer, scroll->texture, NULL, &scroll->rect_left, 0, NULL, SDL_FLIP_HORIZONTAL);
+
+    // Draw clock, and what's playing under it
+    if (config.clock_enabled) {
+        SDL_RenderCopy(renderer, clk->time_texture, NULL, &clk->time_rect);
+        if (config.clock_show_date)
+            SDL_RenderCopy(renderer, clk->date_texture, NULL, &clk->date_rect);
+        draw_now_playing();
+    }
+
+    // Draw highlight
+    if (config.highlight)
+        SDL_RenderCopy(renderer,
+            highlight->texture,
+            NULL,
+            &highlight->rect
+        );
+
+    // Draw buttons
+    if (carousel_active())
+        draw_carousel_buttons();
+    Entry *entry = current_menu->root_entry;
+    SDL_Texture *icon;
+    for (int i = 0; !carousel_active() && i < geo.num_buttons; i++) {
+        icon = entry_icon(entry, i == (int) current_menu->highlight_position);
+        SDL_RenderCopy(renderer, icon, NULL, &entry->icon_rect);
+        if (config.titles_enabled && (!config.titles_focused_only || i == (int) current_menu->highlight_position)) {
+            if (i == (int) current_menu->highlight_position)
+                draw_title_glow(entry, &entry->text_rect, 1.0f);
+            SDL_RenderCopy(renderer, entry->title_texture, NULL, &entry->text_rect);
+        }
+        entry = entry-> next;
+    }
+
+    // Draw the layout popup over the menu
+    draw_layout_popup();
+}
+
 // A function to update the screen with all visible textures
 static void draw_screen()
 {
@@ -1398,48 +1530,8 @@ static void draw_screen()
         // Draw the audio visualizer over the background
         draw_visualizer();
 
-        // Draw scroll indicators (not in carousel mode: the row fills the screen edge to edge)
-        if (config.scroll_indicators && !carousel_active() &&
-        (current_menu->page*config.max_buttons + (unsigned int) geo.num_buttons) <= (current_menu->num_entries - 1))
-            SDL_RenderCopy(renderer, scroll->texture, NULL, &scroll->rect_right);
-
-        if (config.scroll_indicators && !carousel_active() && current_menu->page > 0)
-            SDL_RenderCopyEx(renderer, scroll->texture, NULL, &scroll->rect_left, 0, NULL, SDL_FLIP_HORIZONTAL);
-
-        // Draw clock, and what's playing under it
-        if (config.clock_enabled) {
-            SDL_RenderCopy(renderer, clk->time_texture, NULL, &clk->time_rect);
-            if (config.clock_show_date)
-                SDL_RenderCopy(renderer, clk->date_texture, NULL, &clk->date_rect);
-            draw_now_playing();
-        }
-
-        // Draw highlight
-        if (config.highlight)
-            SDL_RenderCopy(renderer,
-                highlight->texture,
-                NULL,
-                &highlight->rect
-            );
-
-        // Draw buttons
-        if (carousel_active())
-            draw_carousel_buttons();
-        Entry *entry = current_menu->root_entry;
-        SDL_Texture *icon;
-        for (int i = 0; !carousel_active() && i < geo.num_buttons; i++) {
-            icon = entry_icon(entry, i == (int) current_menu->highlight_position);
-            SDL_RenderCopy(renderer, icon, NULL, &entry->icon_rect);
-            if (config.titles_enabled && (!config.titles_focused_only || i == (int) current_menu->highlight_position)) {
-                if (i == (int) current_menu->highlight_position)
-                    draw_title_glow(entry, &entry->text_rect, 1.0f);
-                SDL_RenderCopy(renderer, entry->title_texture, NULL, &entry->text_rect);
-            }
-            entry = entry-> next;
-        }
-
-        // Draw the layout popup over the menu
-        draw_layout_popup();
+        // Draw the menu and widgets, which fade out when idle
+        draw_faded_ui();
 
         // Draw screensaver
         if (state.screensaver_active)
@@ -1707,12 +1799,12 @@ static void poll_gamepad()
         // Execute command if first press or valid repeat
         if (i->repeat == 1) {
             log_debug("Gamepad %s detected", i->label);
-            ticks.last_input = ticks.main;
-            execute_command(i->cmd);
+            if (!wake_from_idle())
+                execute_command(i->cmd);
         }
         else if (i->repeat == delay_period) {
-            ticks.last_input = ticks.main;
-            execute_command(i->cmd);
+            if (!wake_from_idle())
+                execute_command(i->cmd);
             i->repeat -= repeat_period;
         }
     }
@@ -2231,13 +2323,12 @@ int main(int argc, char *argv[])
                     break;
 
                 case SDL_KEYDOWN:
-                    ticks.last_input = ticks.main;
-                    handle_keypress(&event.key.keysym);
+                    if (!wake_from_idle())
+                        handle_keypress(&event.key.keysym);
                     break;
                 
                 case SDL_MOUSEBUTTONDOWN:
-                    if (config.mouse_select && event.button.button == SDL_BUTTON_LEFT) {
-                        ticks.last_input = ticks.main;
+                    if (config.mouse_select && event.button.button == SDL_BUTTON_LEFT && !wake_from_idle()) {
                         if (layout_popup_active())
                             layout_popup_command(SCMD_SELECT);
                         else {
@@ -2313,6 +2404,7 @@ int main(int argc, char *argv[])
                 update_web_background();
             if (config.screensaver_enabled)
                 update_screensaver();
+            update_idle();
             // Render the clock on this thread: SDL_ttf isn't thread-safe, and the menus and
             // the layout popup render text here too. It's two short strings once a minute.
             if (config.clock_enabled)
