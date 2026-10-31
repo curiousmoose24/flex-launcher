@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
 #include <math.h>
 #include <time.h>
 #include <SDL.h>
@@ -156,9 +157,100 @@ static SDL_Color scale_color(SDL_Color color, float factor, Uint8 alpha)
 }
 
 #if SDL_VERSION_ATLEAST(2, 0, 18)
+// The gradient is drawn into a texture with dithering. Interpolated in 8 bits, a dark
+// gradient has only a few dozen shades over the screen height, which show as bands.
+// Adding a fixed noise of about one shade per pixel before rounding blends the bands
+// together. The texture is only redrawn when the gradient's colors change.
+#define DITHER_TILE_SIZE 256 // Side of the square of dither noise repeated over the gradient
+
+static SDL_Texture *gradient_texture = NULL;
+static bool gradient_texture_failed = false;
+static SDL_Color gradient_top;
+static SDL_Color gradient_bottom;
+static float *dither_tile = NULL; // Repeated over the screen, so the noise is worked out once
+
+// A function to get a fixed dither offset for a pixel, from -1 to 1 and clustered
+// around 0 (the sum of two uniform hashes), so the noise is hard to see
+static float dither_noise(Uint32 x, Uint32 y)
+{
+    Uint32 h = x * 0x8DA6B343u ^ y * 0xD8163841u;
+    h ^= h >> 15;
+    h *= 0x2C1B3C6Du;
+    h ^= h >> 12;
+    h *= 0x297A2D39u;
+    h ^= h >> 15;
+    return (float) (h & 0xFFFF) / 65536.0f + (float) (h >> 16) / 65536.0f - 1.0f;
+}
+
+static Uint8 dither_channel(float value, float noise)
+{
+    float v = floorf(value + 0.5f + noise);
+    return (Uint8) (v < 0.0f ? 0.0f : v > 255.0f ? 255.0f : v);
+}
+
+// A function to draw the gradient into its texture
+static bool render_gradient_texture(SDL_Color top, SDL_Color bottom)
+{
+    int w = geo.screen_width;
+    int h = geo.screen_height;
+    if (gradient_texture == NULL) {
+        gradient_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+        if (gradient_texture == NULL) {
+            log_error("Could not create the gradient texture, it may show bands\n%s", SDL_GetError());
+            gradient_texture_failed = true;
+            return false;
+        }
+        SDL_SetTextureBlendMode(gradient_texture, SDL_BLENDMODE_NONE);
+    }
+    else if (gradient_top.r == top.r && gradient_top.g == top.g && gradient_top.b == top.b &&
+    gradient_bottom.r == bottom.r && gradient_bottom.g == bottom.g && gradient_bottom.b == bottom.b)
+        return true;
+
+    if (dither_tile == NULL) {
+        dither_tile = malloc(DITHER_TILE_SIZE * DITHER_TILE_SIZE * sizeof(float));
+        for (Uint32 y = 0; y < DITHER_TILE_SIZE; y++) {
+            for (Uint32 x = 0; x < DITHER_TILE_SIZE; x++)
+                dither_tile[y * DITHER_TILE_SIZE + x] = dither_noise(x, y);
+        }
+    }
+
+    void *pixels;
+    int pitch;
+    if (SDL_LockTexture(gradient_texture, NULL, &pixels, &pitch) != 0)
+        return false;
+    for (int y = 0; y < h; y++) {
+        float t = ((float) y + 0.5f) / (float) h;
+        float r = (float) top.r + ((float) bottom.r - (float) top.r) * t;
+        float g = (float) top.g + ((float) bottom.g - (float) top.g) * t;
+        float b = (float) top.b + ((float) bottom.b - (float) top.b) * t;
+        Uint32 *row = (Uint32*) ((Uint8*) pixels + (size_t) y * (size_t) pitch);
+        const float *tile_row = dither_tile + (y % DITHER_TILE_SIZE) * DITHER_TILE_SIZE;
+
+        // The color is the same along the row, so it repeats with the tile: work out one
+        // tile's width of pixels and copy it across. The same noise goes on every channel,
+        // so the dither doesn't shift the hue
+        int span = w < DITHER_TILE_SIZE ? w : DITHER_TILE_SIZE;
+        for (int x = 0; x < span; x++)
+            row[x] = 0xFF000000u | (Uint32) dither_channel(r, tile_row[x]) << 16 |
+                     (Uint32) dither_channel(g, tile_row[x]) << 8 | dither_channel(b, tile_row[x]);
+        for (int x = span; x < w; x += span)
+            memcpy(row + x, row, (size_t) (w - x < span ? w - x : span) * sizeof(Uint32));
+    }
+    SDL_UnlockTexture(gradient_texture);
+    gradient_top = top;
+    gradient_bottom = bottom;
+    return true;
+}
+
 // A function to draw the vertical gradient
 static void draw_gradient(SDL_Color top, SDL_Color bottom)
 {
+    if (!gradient_texture_failed && render_gradient_texture(top, bottom)) {
+        SDL_RenderCopy(renderer, gradient_texture, NULL, NULL);
+        return;
+    }
+
+    // Without the texture, let the GPU interpolate the colors
     float w = (float) geo.screen_width;
     float h = (float) geo.screen_height;
     SDL_Vertex vertices[4] = {
@@ -532,6 +624,11 @@ void quit_wave_background()
     if (sparkle_glow_texture != NULL)
         SDL_DestroyTexture(sparkle_glow_texture);
     sparkle_glow_texture = NULL;
+    if (gradient_texture != NULL)
+        SDL_DestroyTexture(gradient_texture);
+    gradient_texture = NULL;
+    free(dither_tile);
+    dither_tile = NULL;
 }
 
 // A function to draw the wave background for the current frame
