@@ -104,17 +104,19 @@ typedef struct {
     float phase;
     float thickness;   // Half height of the band, fraction of screen height
     Uint8 alpha;       // Brightness at the center of the band
+    float slot;        // Angle of the band around the cylinder, in quarter turns
 } Ribbon;
 
+// The wide bands sit a quarter turn apart around the cylinder, with the strands between them
 static const Ribbon ribbons[] = {
-    {0.62f, 0.07f, 0.9f, 0.25f, 0.0f, 0.090f, 60},
-    {0.60f, 0.06f, 1.2f, -0.18f, 1.7f, 0.060f, 45},
-    {0.64f, 0.05f, 0.7f, 0.12f, 3.1f, 0.030f, 70},
-    {0.61f, 0.065f, 1.0f, -0.22f, 4.6f, 0.075f, 50},
+    {0.62f, 0.07f, 0.9f, 0.25f, 0.0f, 0.090f, 60, 0.0f},
+    {0.60f, 0.06f, 1.2f, -0.18f, 1.7f, 0.060f, 45, 1.0f},
+    {0.64f, 0.05f, 0.7f, 0.12f, 3.1f, 0.030f, 70, 2.0f},
+    {0.61f, 0.065f, 1.0f, -0.22f, 4.6f, 0.075f, 50, 3.0f},
     // Thin strands of light
-    {0.61f, 0.075f, 0.9f, 0.25f, 0.35f, 0.0025f, 140},
-    {0.63f, 0.065f, 1.1f, 0.21f, 0.9f, 0.0020f, 120},
-    {0.59f, 0.070f, 0.8f, -0.16f, 2.2f, 0.0020f, 110}
+    {0.61f, 0.075f, 0.9f, 0.25f, 0.35f, 0.0025f, 140, 0.5f},
+    {0.63f, 0.065f, 1.1f, 0.21f, 0.9f, 0.0020f, 120, 1.5f},
+    {0.59f, 0.070f, 0.8f, -0.16f, 2.2f, 0.0020f, 110, 2.5f}
 };
 
 // A function to reduce a phase to one period. The animation runs for as long as the launcher
@@ -124,6 +126,70 @@ static float wrap_phase(double phase)
 {
     return (float) fmod(phase, 2.0 * PI_D);
 }
+
+// Now and then the bands leave their waves and wrap around a cylinder lying across the
+// screen, each in its own place around it, slowly spiralling along it and turning about
+// its axis. Bands at the back are dimmer, and a band looks thinner where it curves over
+// the top or bottom of the cylinder. Times are in animation seconds, so the cylinder
+// comes around less often while the launcher is idle.
+#define CYLINDER_RADIUS 0.09f        // Fraction of screen height
+#define CYLINDER_TURNS 1.0f          // Turns of the spiral across the screen
+#define CYLINDER_SPIN 0.35f          // Radians per second about the axis
+#define CYLINDER_BAND_SCALE 0.4f     // Wide bands are narrower around the cylinder, so they stay apart
+#define CYLINDER_MORPH_TIME 6.0      // Seconds to form the cylinder, and to unwind it
+#define CYLINDER_HOLD_TIME 18.0      // Seconds the cylinder holds
+#define CYLINDER_FIRST_MIN 120.0     // Seconds before the first cylinder
+#define CYLINDER_FIRST_MAX 240.0
+#define CYLINDER_INTERVAL_MIN 240.0  // Seconds between cylinders
+#define CYLINDER_INTERVAL_MAX 480.0
+
+static double cylinder_start = -1.0; // When the current or next cylinder starts (-1: not scheduled)
+static bool cylinder_requested = false;
+
+static double random_seconds(double min, double max)
+{
+    return min + (max - min) * (double) rand() / (double) RAND_MAX;
+}
+
+// A function to get how far the ribbons have formed the cylinder, from 0 to 1
+static float cylinder_amount(double seconds)
+{
+    double length = 2.0 * CYLINDER_MORPH_TIME + CYLINDER_HOLD_TIME;
+    if (cylinder_start < 0.0)
+        cylinder_start = seconds + random_seconds(CYLINDER_FIRST_MIN, CYLINDER_FIRST_MAX);
+    double elapsed = seconds - cylinder_start;
+
+    // Start one now if asked to, unless one is already showing
+    if (cylinder_requested) {
+        cylinder_requested = false;
+        if (elapsed < 0.0 || elapsed >= length) {
+            cylinder_start = seconds;
+            elapsed = 0.0;
+        }
+    }
+    if (elapsed >= length) {
+        cylinder_start += length + random_seconds(CYLINDER_INTERVAL_MIN, CYLINDER_INTERVAL_MAX);
+        elapsed = seconds - cylinder_start;
+    }
+    if (elapsed <= 0.0)
+        return 0.0f;
+    float t = (float) fmin(fmin(elapsed, length - elapsed) / CYLINDER_MORPH_TIME, 1.0);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+// A function to start the cylinder at once
+void start_wave_cylinder()
+{
+    cylinder_requested = true;
+}
+
+// A function to get the cylinder's axis at horizontal position u (0-1), in pixels
+static float cylinder_axis(float u, double seconds)
+{
+    double angle = 2.0 * PI_D * 0.8 * u + 0.2 * seconds;
+    return (float) geo.screen_height * (0.615f + 0.05f * sinf(wrap_phase(angle)));
+}
+
 
 // A function to calculate a ribbon's center line at horizontal position u (0-1), in pixels.
 // twist_out receives the phase of the band's changing thickness.
@@ -264,7 +330,7 @@ static void draw_gradient(SDL_Color top, SDL_Color bottom)
 }
 
 // A function to draw a ribbon as three rows of vertices (transparent edges, bright center)
-static void draw_ribbon(const Ribbon *ribbon, double seconds, SDL_Color color)
+static void draw_ribbon(const Ribbon *ribbon, double seconds, float cylinder, SDL_Color color)
 {
     static SDL_Vertex vertices[(MAX_WAVE_SEGMENTS + 1) * 3];
     static int indices[MAX_WAVE_SEGMENTS * 12];
@@ -286,9 +352,24 @@ static void draw_ribbon(const Ribbon *ribbon, double seconds, SDL_Color color)
 
         // The band twists: its thickness varies along the wave
         float half = h * ribbon->thickness * (0.55f + 0.45f * sinf(twist));
+        float alpha = (float) ribbon->alpha;
+
+        // Move towards the band's place around the cylinder
+        if (cylinder > 0.0f) {
+            float around = wrap_phase(0.5 * PI_D * ribbon->slot + 2.0 * PI_D * CYLINDER_TURNS * u +
+                                      CYLINDER_SPIN * seconds);
+            float facing = cosf(around); // 1 at the front, -1 at the back
+            float depth = 0.5f + 0.5f * facing;
+            float y_cylinder = cylinder_axis(u, seconds) + h * CYLINDER_RADIUS * sinf(around);
+            float half_cylinder = h * ribbon->thickness * (ribbon->thickness > 0.01f ? CYLINDER_BAND_SCALE : 1.0f) *
+                                  (0.3f + 0.7f * fabsf(facing)) * (0.85f + 0.3f * depth);
+            float alpha_cylinder = (float) ribbon->alpha * (0.35f + 0.65f * depth);
+            y += (y_cylinder - y) * cylinder;
+            half += (half_cylinder - half) * cylinder;
+            alpha += (alpha_cylinder - alpha) * cylinder;
+        }
 
         // Keep the band at least a few pixels wide, dimming it by as much as it was widened
-        float alpha = (float) ribbon->alpha;
         if (half < MIN_RIBBON_HALF) {
             alpha *= half / MIN_RIBBON_HALF;
             half = MIN_RIBBON_HALF;
@@ -666,8 +747,9 @@ void draw_wave_background()
     // Additive blending makes overlapping ribbons glow
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_ADD);
     SDL_Color light = scale_color((SDL_Color) {0xFF, 0xFF, 0xFF, 0xFF}, 0.6f + 0.4f * brightness, 0xFF);
+    float cylinder = cylinder_amount(seconds);
     for (size_t i = 0; i < sizeof(ribbons) / sizeof(ribbons[0]); i++)
-        draw_ribbon(&ribbons[i], seconds, light);
+        draw_ribbon(&ribbons[i], seconds, cylinder, light);
     if (config.wave_sparkles)
         draw_sparkles(seconds, light);
 

@@ -59,6 +59,7 @@
 #define SCMD_WALLPAPER ":wallpaper"
 #define SCMD_LAYOUTS ":layouts"
 #define SCMD_IDLE ":idle"
+#define SCMD_CYLINDER ":cylinder"
 #define SCMD_HOME ":home"
 #define SCMD_BACK ":back"
 #define SCMD_QUIT ":quit"

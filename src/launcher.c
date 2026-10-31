@@ -1654,6 +1654,8 @@ static void execute_command(const char *command)
             open_layout_popup();
         else if (!strcmp(special_command, SCMD_IDLE))
             enter_idle();
+        else if (!strcmp(special_command, SCMD_CYLINDER))
+            start_wave_cylinder();
         else if (!strcmp(special_command, SCMD_HOME))
             load_menu(default_menu, false, true);
         else if (!strcmp(special_command, SCMD_BACK))

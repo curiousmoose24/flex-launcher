@@ -171,7 +171,7 @@ Defines what mode the background will be. Possible values: "Color", "Image", "Sl
 - Image: The background will be an image.
 - Slideshow: The background will be a series of images displayed in random order, with a fading transition between each image.
 - Transparent: The background will be transparent. This is an advanced feature; users should read the [Transparent Backgrounds](#transparent-backgrounds) section before proceeding.
-- Wave: An animated background similar to the PlayStation 3's XMB: a color gradient with soft, glowing ribbons drifting across the screen. See [WaveColor](#wavecolor) and [WaveTimeOfDay](#wavetimeofday). Requires SDL 2.0.18 or newer; with older versions the background falls back to "Color".
+- Wave: An animated background similar to the PlayStation 3's XMB: a color gradient with soft, glowing ribbons drifting across the screen. Every 4 to 8 minutes the ribbons wrap around a cylinder lying across the screen for about half a minute, each band keeping its own place around it as they spiral along it, then unwind back into waves (see [:cylinder](#cylinder)). See [WaveColor](#wavecolor) and [WaveTimeOfDay](#wavetimeofday). Requires SDL 2.0.18 or newer; with older versions the background falls back to "Color".
 
 Default: Color
 
@@ -648,6 +648,9 @@ Open a popup window listing the console layout schemes, with the current [Scheme
 
 #### :idle
 Fade out the menus and widgets and slow the background animation at once, as the launcher does on its own after [IdleFadeTime](#idlefadetime) without input. Any input brings the menus back. This works even when `IdleFadeTime` is 0.
+
+#### :cylinder
+With the `Wave` background, wrap the ribbons around a cylinder at once, as they do on their own every few minutes. They unwind back into waves about half a minute later.
 
 #### :togglesounds
 Turn navigation sounds on or off, and save the choice to the `Enabled` setting in the `[Sounds]` section of the config file. Turning sounds on plays the select chime, and turning them off plays the falling "off" chime. If the entry's icon has an `_off` variant next to it (e.g. `sound.svg` and `sound_off.svg`), the variant is shown while sounds are off.
