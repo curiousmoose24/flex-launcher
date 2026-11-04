@@ -171,7 +171,7 @@ Defines what mode the background will be. Possible values: "Color", "Image", "Sl
 - Image: The background will be an image.
 - Slideshow: The background will be a series of images displayed in random order, with a fading transition between each image.
 - Transparent: The background will be transparent. This is an advanced feature; users should read the [Transparent Backgrounds](#transparent-backgrounds) section before proceeding.
-- Wave: An animated background similar to the PlayStation 3's XMB: a color gradient with soft, glowing ribbons drifting across the screen. Every 5 to 10 minutes the ribbons wrap around a cylinder lying across the screen for about 40 seconds, each band keeping its own place around it as they spiral along it, then unwind back into waves (see [:cylinder](#cylinder)). See [WaveColor](#wavecolor) and [WaveTimeOfDay](#wavetimeofday). Requires SDL 2.0.18 or newer; with older versions the background falls back to "Color".
+- Wave: An animated background similar to the PlayStation 3's XMB: a color gradient with soft, glowing ribbons drifting across the screen. Every 5 to 10 minutes the ribbons wrap around a cylinder lying across the screen for about 40 seconds, each band keeping its own place around it as the cylinder rotates, then unwind back into waves (see [:cylinder](#cylinder)). See [WaveColor](#wavecolor) and [WaveTimeOfDay](#wavetimeofday). Requires SDL 2.0.18 or newer; with older versions the background falls back to "Color".
 
 Default: Color
 

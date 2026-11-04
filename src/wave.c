@@ -133,8 +133,8 @@ static float wrap_phase(double phase)
 // the top or bottom of the cylinder. Times are in animation seconds, so the cylinder
 // comes around less often while the launcher is idle.
 #define CYLINDER_RADIUS 0.09f        // Fraction of screen height
-#define CYLINDER_TURNS 1.0f          // Turns of the spiral across the screen
-#define CYLINDER_SPIN 0.35f          // Radians per second about the axis
+#define CYLINDER_TURNS 0.75f         // Turns of the spiral across the screen
+#define CYLINDER_SPIN 1.2f           // Radians per second about the axis
 #define CYLINDER_BAND_SCALE 0.4f     // Wide bands are narrower around the cylinder, so they stay apart
 #define CYLINDER_MORPH_TIME 6.0      // Seconds to form the cylinder, and to unwind it
 #define CYLINDER_HOLD_TIME 18.0      // Seconds the cylinder holds
