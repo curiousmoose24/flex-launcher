@@ -435,6 +435,7 @@ typedef struct {
 static Sparkle sparkles[NUM_SPARKLES];
 
 // The animation clock, which runs slower while the launcher is idle
+#define ANIMATION_BASE_SPEED 0.8     // Speed of the ribbons and sparkles relative to their design speed
 static double animation_seconds = 0.0;
 static Uint64 animation_ticks = 0;
 static float animation_speed = 1.0f;
@@ -723,7 +724,7 @@ void draw_wave_background()
     if (animation_ticks == 0)
         animation_seconds = (double) ticks / 1000.0;
     else
-        animation_seconds += (double) (ticks - animation_ticks) / 1000.0 * animation_speed;
+        animation_seconds += (double) (ticks - animation_ticks) / 1000.0 * ANIMATION_BASE_SPEED * animation_speed;
     animation_ticks = ticks;
     double seconds = animation_seconds;
 
@@ -757,7 +758,7 @@ void draw_wave_background()
 #endif
 }
 
-// A function to set the speed of the ribbons and sparkles, 1.0 = normal
+// A function to set the speed of the ribbons and sparkles relative to normal, 1.0 = normal
 void set_wave_speed(float speed)
 {
     animation_speed = speed;
